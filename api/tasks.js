@@ -1,14 +1,15 @@
-import { put, head, del } from '@vercel/blob';
+import { put, list, getDownloadUrl } from '@vercel/blob';
 
 const BLOB_KEY = 'tasks.json';
 
 async function getTasks() {
   try {
     // List blobs to find our tasks.json
-    const { blobs } = await (await import('@vercel/blob')).list();
+    const { blobs } = await list();
     const blob = blobs.find(b => b.pathname === BLOB_KEY);
     if (!blob) return { tasks: [] };
-    const res = await fetch(blob.url);
+    const url = await getDownloadUrl(blob.url);
+    const res = await fetch(url);
     return await res.json();
   } catch {
     return { tasks: [] };
@@ -17,7 +18,7 @@ async function getTasks() {
 
 async function saveTasks(data) {
   await put(BLOB_KEY, JSON.stringify(data, null, 2), {
-    access: 'public',
+    access: 'private',
     contentType: 'application/json',
     addRandomSuffix: false,
   });
