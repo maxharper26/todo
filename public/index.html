@@ -256,6 +256,7 @@ async function loadTasks() {
 }
 
 async function saveTasks() {
+  if (!allTasks) return;
   await fetch('/api/tasks', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
