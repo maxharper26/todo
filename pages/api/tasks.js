@@ -4,13 +4,12 @@ const BLOB_KEY = 'tasks.json';
 
 async function getTasks() {
   try {
-    // List blobs to find our tasks.json
     const { blobs } = await list();
     const blob = blobs.find(b => b.pathname === BLOB_KEY);
     if (!blob) return { tasks: [] };
     const res = await fetch(blob.url);
     return await res.json();
-  } catch {
+  } catch (e) {
     return { tasks: [] };
   }
 }
