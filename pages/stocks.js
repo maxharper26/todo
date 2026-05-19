@@ -59,6 +59,7 @@ function getColumnStats(rows, key) {
 
 export default function StocksPage() {
   const [data, setData] = useState(null);
+  const [cot, setCot] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -67,10 +68,12 @@ export default function StocksPage() {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch('/api/stocks');
+        const [res, cotRes] = await Promise.all([fetch('/api/stocks'), fetch('/api/cot')]);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json();
+        const cotJson = await cotRes.json();
         setData(json);
+        setCot(cotJson);
       } catch (err) {
         setError(err.message || 'Failed to load stock data.');
       } finally {
@@ -84,7 +87,7 @@ export default function StocksPage() {
   if (error) return <div style={{padding:20}}><h1>Stocks</h1><p style={{color:'red'}}>{error}</p></div>;
   if (!data) return <div style={{padding:20}}>No data</div>;
 
-  const { perTicker, portfolio, allocations, twrSeries, drawdownSeries, standardizedReturns, correlationMatrix, lowCorrelationEtfs, tickers, loaded_at } = data;
+  const { perTicker, portfolio, allocations, twrSeries, drawdownSeries, benchmarkTwrSeries, benchmarkDrawdownSeries, standardizedReturns, correlationMatrix, lowCorrelationEtfs, tickers, loaded_at } = data;
   const portfolioTotalReturn = twrSeries?.length ? (twrSeries[twrSeries.length - 1].value - 100) / 100 : null;
   const returnRows = standardizedReturns ? [
     {
@@ -158,9 +161,9 @@ export default function StocksPage() {
         </div>
       </div>
 
-      {twrSeries && <LineChart points={twrSeries} height={390} title="Cumulative Portfolio TWR" />}
+      {twrSeries && <LineChart points={twrSeries} comparatorPoints={benchmarkTwrSeries} height={390} title="Cumulative Portfolio TWR" />}
 
-      {drawdownSeries && <AreaChart points={drawdownSeries} height={340} title="Drawdown" color="#d1242f" />}
+      {drawdownSeries && <AreaChart points={drawdownSeries} comparatorPoints={benchmarkDrawdownSeries} height={340} title="Drawdown" color="#d1242f" />}
 
       <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 500px), 1fr))', gap: 24, marginBottom: 24}}>
         {correlationMatrix && <Heatmap matrix={correlationMatrix} tickers={tickers} size={540} />}
@@ -191,6 +194,44 @@ export default function StocksPage() {
                     <td style={{padding:'10px 12px', textAlign:'right', color:'#57606a'}}>{item.observations}</td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {cot?.signals?.length > 0 && (
+        <div style={{marginBottom: 24, background:'#fff', border:'1px solid #d8dee4', borderRadius:8, padding: 18}}>
+          <h2 style={{marginTop:0, marginBottom: 4}}>COT Weekly Movers</h2>
+          <p style={{marginTop:0, marginBottom:14, fontSize:13, color:'#57606a'}}>Managed money ratio shifts ≥ 0.035 — last updated {cot.last_updated}</p>
+          <div style={{overflowX:'auto'}}>
+            <table style={{width:'100%', minWidth:580, borderCollapse:'collapse'}}>
+              <thead>
+                <tr style={{textAlign:'left', borderBottom:'2px solid #d8dee4', color:'#57606a', fontSize:13, background:'#f6f8fa'}}>
+                  <th style={{padding:'10px 12px'}}>Market</th>
+                  <th style={{padding:'10px 12px'}}>Category</th>
+                  <th style={{padding:'10px 12px', textAlign:'right'}}>Prev</th>
+                  <th style={{padding:'10px 12px', textAlign:'right'}}>Now</th>
+                  <th style={{padding:'10px 12px', textAlign:'right'}}>Shift</th>
+                  <th style={{padding:'10px 12px', textAlign:'right'}}>Long / Short</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cot.signals.map((s, i) => {
+                  const up = s.delta > 0;
+                  const colour = up ? '#1a7f37' : '#d1242f';
+                  const arrow = up ? '▲' : '▼';
+                  return (
+                    <tr key={i} style={{borderBottom:'1px solid #f0f0f0', background: i % 2 === 0 ? '#fff' : '#fafafa'}}>
+                      <td style={{padding:'10px 12px', fontWeight:600}}>{s.market}</td>
+                      <td style={{padding:'10px 12px', color:'#57606a', fontSize:13}}>{s.category}</td>
+                      <td style={{padding:'10px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums'}}>{s.ratio_prev.toFixed(2)}</td>
+                      <td style={{padding:'10px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums', color:colour, fontWeight:700}}>{arrow} {s.ratio_now.toFixed(2)}</td>
+                      <td style={{padding:'10px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums', color:colour, fontWeight:700}}>{s.delta > 0 ? '+' : ''}{s.delta.toFixed(3)}</td>
+                      <td style={{padding:'10px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums', color:'#57606a'}}>{s.long.toLocaleString()} / {s.short.toLocaleString()}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

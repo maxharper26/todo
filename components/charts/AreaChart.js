@@ -8,9 +8,10 @@ function formatPercent(value) {
   return value == null ? '-' : `${(value * 100).toFixed(2)}%`;
 }
 
-export default function AreaChart({ points, height = 320, title = '', color = '#d1242f' }) {
+export default function AreaChart({ points, comparatorPoints, comparatorLabel = 'MSCI World (VGS)', height = 320, title = '', color = '#d1242f' }) {
   const [hovered, setHovered] = useState(null);
   const hasData = points && points.length >= 2;
+  const hasComparator = comparatorPoints && comparatorPoints.length >= 2;
 
   const width = 920;
   const chartHeight = 300;
@@ -19,11 +20,16 @@ export default function AreaChart({ points, height = 320, title = '', color = '#
   const innerHeight = chartHeight - padding.top - padding.bottom;
 
   const chart = useMemo(() => {
-    if (!hasData) return { mapped: [], path: '', areaPath: '', min: 0, max: 1, zeroY: padding.top + innerHeight };
+    if (!hasData) return { mapped: [], path: '', areaPath: '', min: 0, max: 1, zeroY: padding.top + innerHeight, compPath: '' };
 
     const values = points.map((point) => point.value).filter((value) => typeof value === 'number' && !Number.isNaN(value));
-    const rawMin = Math.min(...values, 0);
+    let rawMin = Math.min(...values, 0);
     const rawMax = 0;
+
+    if (hasComparator) {
+      rawMin = Math.min(rawMin, ...comparatorPoints.map(p => p.value).filter(v => typeof v === 'number'));
+    }
+
     const pad = Math.abs(rawMin || 1) * 0.08;
     const min = rawMin - pad;
     const max = rawMax;
@@ -37,12 +43,28 @@ export default function AreaChart({ points, height = 320, title = '', color = '#
     const path = mapped.map((point, idx) => `${idx === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ');
     const areaPath = `${path} L ${mapped[mapped.length - 1].x} ${zeroY} L ${mapped[0].x} ${zeroY} Z`;
 
-    return { mapped, path, areaPath, min, max, zeroY };
-  }, [points, hasData, innerHeight, innerWidth]);
+    let compPath = '';
+    let compMapped = [];
+    if (hasComparator) {
+      const dateToX = new Map(points.map((p, i) => [p.date, padding.left + (i / (points.length - 1)) * innerWidth]));
+      compMapped = comparatorPoints
+        .filter(p => dateToX.has(p.date))
+        .map(p => ({
+          x: dateToX.get(p.date),
+          y: padding.top + innerHeight - ((p.value - min) / range) * innerHeight,
+        }));
+      compPath = compMapped.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+    }
+
+    return { mapped, path, areaPath, min, max, zeroY, compPath, compMapped };
+  }, [points, comparatorPoints, hasData, hasComparator, innerHeight, innerWidth]);
 
   if (!hasData) return null;
 
   const active = hovered == null ? chart.mapped[chart.mapped.length - 1] : chart.mapped[hovered];
+  const activeComp = chart.compMapped?.length
+    ? (hovered != null ? chart.compMapped[Math.min(hovered, chart.compMapped.length - 1)] : chart.compMapped[chart.compMapped.length - 1])
+    : null;
   const xTicks = [chart.mapped[0], chart.mapped[Math.floor(chart.mapped.length / 2)], chart.mapped[chart.mapped.length - 1]];
 
   function onMouseMove(event) {
@@ -56,12 +78,23 @@ export default function AreaChart({ points, height = 320, title = '', color = '#
     <div style={{ marginBottom: 24, background: '#fff', border: '1px solid #d8dee4', borderRadius: 8, padding: 18 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 16, marginBottom: 12 }}>
         <h2 style={{ margin: 0, fontSize: 20 }}>{title}</h2>
-        {active && (
-          <div style={{ textAlign: 'right', fontSize: 13, color: '#57606a' }}>
-            <strong style={{ display: 'block', color: active.value < 0 ? '#d1242f' : '#1a7f37', fontSize: 16 }}>{formatPercent(active.value)}</strong>
-            {formatDate(active.date)}
-          </div>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          {hasComparator && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#57606a' }}>
+              <svg width="20" height="3"><line x1="0" y1="1.5" x2="20" y2="1.5" stroke="#8c959f" strokeWidth="2" strokeDasharray="4 3" /></svg>
+              {comparatorLabel}
+              {activeComp && <strong style={{ color: '#8c959f', marginLeft: 4 }}>{formatPercent(activeComp.value)}</strong>}
+            </div>
+          )}
+          {active && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#57606a' }}>
+              <svg width="20" height="3"><line x1="0" y1="1.5" x2="20" y2="1.5" stroke={color} strokeWidth="3" /></svg>
+              Portfolio
+              <strong style={{ color: active.value < 0 ? '#d1242f' : '#1a7f37', marginLeft: 4 }}>{formatPercent(active.value)}</strong>
+              <span style={{ marginLeft: 4 }}>{formatDate(active.date)}</span>
+            </div>
+          )}
+        </div>
       </div>
       <svg
         viewBox={`0 0 ${width} ${chartHeight}`}
@@ -97,9 +130,11 @@ export default function AreaChart({ points, height = 320, title = '', color = '#
         <line x1={padding.left} x2={width - padding.right} y1={chart.zeroY} y2={chart.zeroY} stroke="#8c959f" strokeDasharray="4 5" />
         <path d={chart.areaPath} fill="url(#drawdownFade)" />
         <path d={chart.path} fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+        {chart.compPath && <path d={chart.compPath} fill="none" stroke="#8c959f" strokeWidth="2" strokeDasharray="6 4" strokeLinecap="round" />}
         {active && (
           <g>
             <line x1={active.x} x2={active.x} y1={padding.top} y2={padding.top + innerHeight} stroke="#8c959f" strokeDasharray="4 5" />
+            {activeComp && <circle cx={activeComp.x} cy={activeComp.y} r="5" fill="#fff" stroke="#8c959f" strokeWidth="2" />}
             <circle cx={active.x} cy={active.y} r="6" fill="#fff" stroke={color} strokeWidth="3" />
           </g>
         )}

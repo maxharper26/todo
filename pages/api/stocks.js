@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { parse } = require('csv-parse/sync');
+const { put, list } = require('@vercel/blob');
 
 function parseDateFlexible(s) {
   if (!s) return null;
@@ -218,28 +219,23 @@ function displayTicker(ticker) {
 
 const USD_ALLOCATION_TICKERS = new Set(['DXYZ']);
 
-const LOW_CORRELATION_CACHE_MS = 6 * 60 * 60 * 1000;
-let lowCorrelationCache = null;
+const ETF_CORR_BLOB_KEY = 'etf-correlations.json';
+const ETF_CORR_TTL_MS = 24 * 60 * 60 * 1000;
 
 const GLOBAL_X_ASX_ETFS = [
   ['GOLD.AX', 'Physical Gold'],
-  ['GXLD.AX', 'Gold Bullion ETF'],
-  ['GHLD.AX', 'Gold Bullion Hedged'],
   ['ETPMAG.AX', 'Physical Silver'],
   ['ETPMPT.AX', 'Physical Platinum'],
   ['ETPMPD.AX', 'Physical Palladium'],
   ['ETPMPM.AX', 'Precious Metals Basket'],
-  ['GCO2.AX', 'Global Carbon'],
   ['SEMI.AX', 'Semiconductors'],
   ['FANG.AX', 'FANG+'],
-  ['FHNG.AX', 'FANG+ Hedged'],
   ['TECH.AX', 'Global Technology'],
   ['GXAI.AX', 'Artificial Intelligence'],
   ['AINF.AX', 'AI Infrastructure'],
   ['ROBO.AX', 'Robotics & Automation'],
   ['HMND.AX', 'Humanoid Robotics'],
   ['BUGG.AX', 'Cybersecurity'],
-  ['FTEC.XA', 'Fintech & Blockchain'],
   ['ACDC.AX', 'Battery Tech & Lithium'],
   ['ATOM.AX', 'Uranium'],
   ['WIRE.AX', 'Copper Miners'],
@@ -251,7 +247,6 @@ const GLOBAL_X_ASX_ETFS = [
   ['DRGN.AX', 'China Tech'],
   ['GARP.AX', 'World ex-AU GARP'],
   ['U100.AX', 'US 100'],
-  ['N100.AX', 'US 100 ETF'],
   ['A300.AX', 'Australia 300'],
   ['OZXX.AX', 'Australia ex-Financials & Resources'],
   ['ZYAU.AX', 'ASX 200 High Dividend'],
@@ -262,6 +257,13 @@ const GLOBAL_X_ASX_ETFS = [
   ['USHY.AX', 'USD High Yield Bond Hedged'],
   ['USIG.AX', 'USD Corporate Bond Hedged'],
   ['BANK.AX', 'Australian Bank Credit'],
+  ['WCMQ.AX', 'WCM Quality Global Growth'],
+  ['XMET.AX', 'Energy Transition Metals'],
+  ['ASIA.AX', 'Asia ex-Japan'],
+  ['WXOZ.AX', 'Emerging Markets ex-China'],
+  ['IEM.AX', 'iShares MSCI Emerging Markets'],
+  ['CLNE.AX', 'Global Clean Energy'],
+  ['RBTZ.AX', 'Global Robotics & AI'],
   ['EBTC.XA', 'Bitcoin ETF'],
   ['EETH.XA', 'Ethereum ETF'],
 ];
@@ -290,14 +292,29 @@ function dailyReturnPoints(series) {
 }
 
 async function getLowCorrelationEtfs(portfolioReturnPoints, cacheKey) {
-  if (lowCorrelationCache && lowCorrelationCache.cacheKey === cacheKey && Date.now() - lowCorrelationCache.loadedAt < LOW_CORRELATION_CACHE_MS) {
-    return lowCorrelationCache.data;
+  // Check blob cache first
+  try {
+    const { blobs } = await list();
+    const blob = blobs.find(b => b.pathname === ETF_CORR_BLOB_KEY);
+    if (blob) {
+      const uploadedAt = new Date(blob.uploadedAt).getTime();
+      if (Date.now() - uploadedAt < ETF_CORR_TTL_MS) {
+        const res = await fetch(blob.url);
+        const cached = await res.json();
+        if (cached.cacheKey === cacheKey) {
+          console.log('ETF correlations: blob cache hit');
+          return cached.data;
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('ETF corr blob read failed, refetching:', e?.message);
   }
 
   const portfolioReturnsByDate = new Map(portfolioReturnPoints.map(point => [point.date, point.value]));
   const end = new Date();
-  const start = new Date(Date.now() - 60 * 24 * 3600 * 1000);
-  const rows = await mapWithConcurrency(GLOBAL_X_ASX_ETFS, 4, async ([ticker, name]) => {
+  const start = new Date(Date.now() - 365 * 24 * 3600 * 1000);
+  const rows = await mapWithConcurrency(GLOBAL_X_ASX_ETFS, 6, async ([ticker, name]) => {
     try {
       const series = await fetchYahooChart(ticker, start, end);
       const returns = dailyReturnPoints(series);
@@ -305,17 +322,20 @@ async function getLowCorrelationEtfs(portfolioReturnPoints, cacheKey) {
         .map(point => [portfolioReturnsByDate.get(point.date), point.value])
         .filter(pair => typeof pair[0] === 'number' && typeof pair[1] === 'number' && !isNaN(pair[0]) && !isNaN(pair[1]));
 
-      if (pairs.length < 8) return null;
+      if (pairs.length < 8) {
+        console.warn(`Dropping ${ticker}: only ${pairs.length} pairs`);
+        return null;
+      }
 
-      const first = series[0]?.close;
       const last = series[series.length - 1]?.close;
+      const monthAgo = series.length > 21 ? series[series.length - 22]?.close : series[0]?.close;
       return {
         ticker: displayTicker(ticker),
         symbol: ticker,
         name,
         correlation: correlation(pairs.map(pair => pair[0]), pairs.map(pair => pair[1])),
         observations: pairs.length,
-        oneMonthReturn: pctChange(last, first),
+        oneMonthReturn: pctChange(last, monthAgo),
       };
     } catch (error) {
       console.warn('ETF correlation failed for', ticker, error?.message || error);
@@ -326,9 +346,20 @@ async function getLowCorrelationEtfs(portfolioReturnPoints, cacheKey) {
   const data = rows
     .filter(row => row && typeof row.correlation === 'number' && !isNaN(row.correlation))
     .sort((a, b) => a.correlation - b.correlation)
-    .slice(0, 20);
+    .slice(0, 100);
 
-  lowCorrelationCache = { cacheKey, loadedAt: Date.now(), data };
+  // Write to blob
+  try {
+    await put(ETF_CORR_BLOB_KEY, JSON.stringify({ cacheKey, data }, null, 2), {
+      access: 'public',
+      contentType: 'application/json',
+      addRandomSuffix: false,
+    });
+    console.log('ETF correlations: blob written');
+  } catch (e) {
+    console.warn('ETF corr blob write failed:', e?.message);
+  }
+
   return data;
 }
 
@@ -509,6 +540,28 @@ export default async function handler(req, res) {
       }
     }
 
+    // Fetch VGS.AX as MSCI World benchmark
+    let benchmarkTwrSeries = null;
+    let benchmarkDrawdownSeries = null;
+    try {
+      const vgsSeries = await fetchYahooChart('VGS.AX', start, end);
+      if (vgsSeries.length >= 2) {
+        const vgsDateMap = vgsSeries.reduce((m, p) => ({ ...m, [p.date]: p.close }), {});
+        let lastVgs = null;
+        const vgsByDate = allDates.map(date => {
+          if (vgsDateMap[date] != null) lastVgs = vgsDateMap[date];
+          return lastVgs;
+        });
+        // Rebase to 100 at portfolio start
+        const startVal = vgsByDate.find(v => v != null) ?? 1;
+        const vgsIndexed = vgsByDate.map(v => v != null ? (v / startVal) * 100 : null);
+        benchmarkTwrSeries = allDates.map((date, i) => ({ date, value: vgsIndexed[i] })).filter(p => p.value != null);
+        benchmarkDrawdownSeries = allDates.map((date, i) => ({ date, value: calculateDrawdown(vgsIndexed.map(v => v ?? 100))[i] }));
+      }
+    } catch (e) {
+      console.warn('VGS benchmark fetch failed:', e?.message);
+    }
+
     // Calculate TWR
     const twrData = calculateTWR(trades, priceByTicker, allDates);
     const portfolioReturnPoints = twrData.values.map((value, idx, arr) => {
@@ -553,9 +606,10 @@ export default async function handler(req, res) {
       }
     }
 
+    const etfListHash = GLOBAL_X_ASX_ETFS.map(([t]) => t).join(',').split('').reduce((h, c) => (Math.imul(31, h) + c.charCodeAt(0)) | 0, 0).toString(36);
     const lowCorrelationEtfs = await getLowCorrelationEtfs(
-      portfolioReturnPoints.slice(-24),
-      `${allDates[allDates.length - 1]}:${twrData.values[twrData.values.length - 1]}:${tickers.join(',')}`
+      portfolioReturnPoints.slice(-252),
+      `${etfListHash}:${allDates[allDates.length - 1]}:${twrData.values[twrData.values.length - 1]}:${tickers.join(',')}`
     );
 
     return res.status(200).json({
@@ -575,6 +629,8 @@ export default async function handler(req, res) {
       portfolioSeries,
       twrSeries,
       drawdownSeries,
+      benchmarkTwrSeries,
+      benchmarkDrawdownSeries,
       standardizedReturns: displayStandardizedReturns,
       correlationMatrix: displayCorrelationMatrix,
       lowCorrelationEtfs,
