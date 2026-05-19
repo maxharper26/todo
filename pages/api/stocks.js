@@ -229,7 +229,6 @@ const GLOBAL_X_ASX_ETFS = [
   ['ETPMPT.AX', 'Physical Platinum'],
   ['ETPMPD.AX', 'Physical Palladium'],
   ['ETPMPM.AX', 'Precious Metals Basket'],
-  ['BCOM.AX', 'Bloomberg Commodity'],
   ['GCO2.AX', 'Global Carbon'],
   ['SEMI.AX', 'Semiconductors'],
   ['FANG.AX', 'FANG+'],
