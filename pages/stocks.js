@@ -19,6 +19,44 @@ function returnStyle(value, strong = false) {
   };
 }
 
+function mixColor(from, to, amount) {
+  const clamped = Math.max(0, Math.min(1, amount));
+  const channel = (idx) => Math.round(from[idx] + (to[idx] - from[idx]) * clamped);
+  return `rgb(${channel(0)}, ${channel(1)}, ${channel(2)})`;
+}
+
+function conditionalCellStyle(value, stats, strong = false) {
+  const style = {
+    color: value == null ? '#57606a' : '#24292f',
+    fontWeight: strong ? 700 : 500,
+  };
+  if (value == null || !stats || stats.min === stats.max) return style;
+
+  const ratio = (value - stats.min) / (stats.max - stats.min);
+  const red = [255, 235, 232];
+  const white = [255, 255, 255];
+  const green = [229, 245, 234];
+
+  return {
+    ...style,
+    backgroundColor: ratio < 0.5
+      ? mixColor(red, white, ratio * 2)
+      : mixColor(white, green, (ratio - 0.5) * 2),
+  };
+}
+
+function getColumnStats(rows, key) {
+  const values = rows
+    .map(row => row[key])
+    .filter(value => typeof value === 'number' && !Number.isNaN(value));
+
+  if (!values.length) return null;
+  return {
+    min: Math.min(...values),
+    max: Math.max(...values),
+  };
+}
+
 export default function StocksPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -46,8 +84,37 @@ export default function StocksPage() {
   if (error) return <div style={{padding:20}}><h1>Stocks</h1><p style={{color:'red'}}>{error}</p></div>;
   if (!data) return <div style={{padding:20}}>No data</div>;
 
-  const { perTicker, portfolio, allocations, twrSeries, drawdownSeries, standardizedReturns, correlationMatrix, tickers, loaded_at } = data;
+  const { perTicker, portfolio, allocations, twrSeries, drawdownSeries, standardizedReturns, correlationMatrix, lowCorrelationEtfs, tickers, loaded_at } = data;
   const portfolioTotalReturn = twrSeries?.length ? (twrSeries[twrSeries.length - 1].value - 100) / 100 : null;
+  const returnRows = standardizedReturns ? [
+    {
+      asset: 'Portfolio',
+      isPortfolio: true,
+      totalReturn: portfolioTotalReturn,
+      oneDay: standardizedReturns.Portfolio?.['1d'],
+      oneWeek: standardizedReturns.Portfolio?.['1w'],
+      oneMonth: standardizedReturns.Portfolio?.['1m'],
+      oneYear: standardizedReturns.Portfolio?.['1y'],
+      sharpe: portfolio?.sharpe,
+    },
+    ...tickers.map(ticker => ({
+      asset: ticker,
+      totalReturn: perTicker[ticker]?.totalReturn,
+      oneDay: standardizedReturns[ticker]?.['1d'],
+      oneWeek: standardizedReturns[ticker]?.['1w'],
+      oneMonth: standardizedReturns[ticker]?.['1m'],
+      oneYear: standardizedReturns[ticker]?.['1y'],
+      sharpe: perTicker[ticker]?.sharpe,
+    }))
+  ] : [];
+  const columnStats = {
+    totalReturn: getColumnStats(returnRows, 'totalReturn'),
+    oneDay: getColumnStats(returnRows, 'oneDay'),
+    oneWeek: getColumnStats(returnRows, 'oneWeek'),
+    oneMonth: getColumnStats(returnRows, 'oneMonth'),
+    oneYear: getColumnStats(returnRows, 'oneYear'),
+    sharpe: getColumnStats(returnRows, 'sharpe'),
+  };
 
   return (
     <div style={{padding:20, maxWidth: 1280, margin: '0 auto'}}>
@@ -69,30 +136,23 @@ export default function StocksPage() {
               </tr>
             </thead>
             <tbody>
-              {standardizedReturns && (
-                <>
-                  <tr style={{fontWeight:'bold', borderBottom:'1px solid #d8dee4', background: '#f6f8fa'}}>
-                    <td style={{padding:'12px 8px'}}>Portfolio</td>
-                    <td style={{padding:'12px 8px', textAlign:'right', ...returnStyle(portfolioTotalReturn, true)}}>{pct(portfolioTotalReturn)}</td>
-                    <td style={{padding:'12px 8px', textAlign:'right', ...returnStyle(standardizedReturns.Portfolio?.['1d'], true)}}>{pct(standardizedReturns.Portfolio?.['1d'])}</td>
-                    <td style={{padding:'12px 8px', textAlign:'right', ...returnStyle(standardizedReturns.Portfolio?.['1w'], true)}}>{pct(standardizedReturns.Portfolio?.['1w'])}</td>
-                    <td style={{padding:'12px 8px', textAlign:'right', ...returnStyle(standardizedReturns.Portfolio?.['1m'], true)}}>{pct(standardizedReturns.Portfolio?.['1m'])}</td>
-                    <td style={{padding:'12px 8px', textAlign:'right', ...returnStyle(standardizedReturns.Portfolio?.['1y'], true)}}>{pct(standardizedReturns.Portfolio?.['1y'])}</td>
-                    <td style={{padding:'12px 8px', textAlign:'right'}}>{fmt(portfolio?.sharpe)}</td>
-                  </tr>
-                  {tickers.map(ticker => (
-                    <tr key={ticker} style={{borderBottom:'1px solid #f0f0f0'}}>
-                      <td style={{padding:'11px 8px', fontWeight: 600}}>{ticker}</td>
-                      <td style={{padding:'11px 8px', textAlign:'right', ...returnStyle(perTicker[ticker]?.totalReturn)}}>{pct(perTicker[ticker]?.totalReturn)}</td>
-                      <td style={{padding:'11px 8px', textAlign:'right', ...returnStyle(standardizedReturns[ticker]?.['1d'])}}>{pct(standardizedReturns[ticker]?.['1d'])}</td>
-                      <td style={{padding:'11px 8px', textAlign:'right', ...returnStyle(standardizedReturns[ticker]?.['1w'])}}>{pct(standardizedReturns[ticker]?.['1w'])}</td>
-                      <td style={{padding:'11px 8px', textAlign:'right', ...returnStyle(standardizedReturns[ticker]?.['1m'])}}>{pct(standardizedReturns[ticker]?.['1m'])}</td>
-                      <td style={{padding:'11px 8px', textAlign:'right', ...returnStyle(standardizedReturns[ticker]?.['1y'])}}>{pct(standardizedReturns[ticker]?.['1y'])}</td>
-                      <td style={{padding:'11px 8px', textAlign:'right'}}>{fmt(perTicker[ticker]?.sharpe)}</td>
-                    </tr>
-                  ))}
-                </>
-              )}
+              {returnRows.map(row => (
+                <tr
+                  key={row.asset}
+                  style={{
+                    fontWeight: row.isPortfolio ? 'bold' : 'normal',
+                    borderBottom: row.isPortfolio ? '1px solid #d8dee4' : '1px solid #f0f0f0',
+                  }}
+                >
+                  <td style={{padding: row.isPortfolio ? '12px 8px' : '11px 8px', fontWeight: row.isPortfolio ? 700 : 600}}>{row.asset}</td>
+                  <td style={{padding: row.isPortfolio ? '12px 8px' : '11px 8px', textAlign:'right', ...conditionalCellStyle(row.totalReturn, columnStats.totalReturn, row.isPortfolio)}}>{pct(row.totalReturn)}</td>
+                  <td style={{padding: row.isPortfolio ? '12px 8px' : '11px 8px', textAlign:'right', ...conditionalCellStyle(row.oneDay, columnStats.oneDay, row.isPortfolio)}}>{pct(row.oneDay)}</td>
+                  <td style={{padding: row.isPortfolio ? '12px 8px' : '11px 8px', textAlign:'right', ...conditionalCellStyle(row.oneWeek, columnStats.oneWeek, row.isPortfolio)}}>{pct(row.oneWeek)}</td>
+                  <td style={{padding: row.isPortfolio ? '12px 8px' : '11px 8px', textAlign:'right', ...conditionalCellStyle(row.oneMonth, columnStats.oneMonth, row.isPortfolio)}}>{pct(row.oneMonth)}</td>
+                  <td style={{padding: row.isPortfolio ? '12px 8px' : '11px 8px', textAlign:'right', ...conditionalCellStyle(row.oneYear, columnStats.oneYear, row.isPortfolio)}}>{pct(row.oneYear)}</td>
+                  <td style={{padding: row.isPortfolio ? '12px 8px' : '11px 8px', textAlign:'right', ...conditionalCellStyle(row.sharpe, columnStats.sharpe, row.isPortfolio)}}>{fmt(row.sharpe)}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
@@ -106,6 +166,36 @@ export default function StocksPage() {
         {correlationMatrix && <Heatmap matrix={correlationMatrix} tickers={tickers} size={540} />}
         {allocations && <PieChart allocations={allocations} size={520} />}
       </div>
+
+      {lowCorrelationEtfs?.length > 0 && (
+        <div style={{marginBottom: 24, background:'#fff', border:'1px solid #d8dee4', borderRadius:8, padding: 18}}>
+          <h2 style={{marginTop:0, marginBottom: 14}}>Lowest ETF Correlations</h2>
+          <div style={{overflowX:'auto'}}>
+            <table style={{width:'100%', minWidth:760, borderCollapse:'collapse'}}>
+              <thead>
+                <tr style={{textAlign:'left', borderBottom:'1px solid #d8dee4', color: '#57606a', fontSize: 13}}>
+                  <th style={{padding:'11px 8px'}}>Ticker</th>
+                  <th style={{padding:'11px 8px'}}>ETF</th>
+                  <th style={{padding:'11px 8px', textAlign:'right'}}>Correlation</th>
+                  <th style={{padding:'11px 8px', textAlign:'right'}}>1m Return</th>
+                  <th style={{padding:'11px 8px', textAlign:'right'}}>Days</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lowCorrelationEtfs.map(item => (
+                  <tr key={item.symbol} style={{borderBottom:'1px solid #f0f0f0'}}>
+                    <td style={{padding:'11px 8px', fontWeight: 700}}>{item.ticker}</td>
+                    <td style={{padding:'11px 8px'}}>{item.name}</td>
+                    <td style={{padding:'11px 8px', textAlign:'right'}}>{fmt(item.correlation)}</td>
+                    <td style={{padding:'11px 8px', textAlign:'right'}}>{pct(item.oneMonthReturn)}</td>
+                    <td style={{padding:'11px 8px', textAlign:'right', color:'#57606a'}}>{item.observations}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <div style={{marginTop:12, fontSize:12, color:'#666'}}>Last updated: {new Date(loaded_at).toLocaleString()}</div>
     </div>

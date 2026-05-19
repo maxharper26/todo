@@ -173,10 +173,30 @@ function calculateDrawdown(twrValues) {
   return drawdowns;
 }
 
-function calculateStandardizedReturns(priceArray) {
+function latestNonZeroReturn(priceArray) {
+  const current = priceArray[priceArray.length - 1];
+  if (current == null) return null;
+
+  for (let i = priceArray.length - 2; i >= 0; i -= 1) {
+    const prev = priceArray[i];
+    if (prev == null || prev === 0) continue;
+
+    const ret = (current - prev) / prev;
+    if (ret !== 0) return ret;
+  }
+
+  return null;
+}
+
+function calculateStandardizedReturns(priceArray, options = {}) {
   const periods = { '1d': 1, '1w': 5, '1m': 21, '1y': 252 };
   const result = {};
   for (const [label, days] of Object.entries(periods)) {
+    if (label === '1d' && options.useLatestNonZeroOneDay) {
+      result[label] = latestNonZeroReturn(priceArray);
+      continue;
+    }
+
     if (priceArray.length > days) {
       const current = priceArray[priceArray.length - 1];
       const prev = priceArray[priceArray.length - 1 - days];
@@ -194,6 +214,131 @@ function formatDate(d) {
 
 function displayTicker(ticker) {
   return ticker.replace(/\.AX$/i, '');
+}
+
+const USD_ALLOCATION_TICKERS = new Set(['DXYZ']);
+
+const LOW_CORRELATION_CACHE_MS = 6 * 60 * 60 * 1000;
+let lowCorrelationCache = null;
+
+const GLOBAL_X_ASX_ETFS = [
+  ['GOLD.AX', 'Physical Gold'],
+  ['GXLD.AX', 'Gold Bullion ETF'],
+  ['GHLD.AX', 'Gold Bullion Hedged'],
+  ['ETPMAG.AX', 'Physical Silver'],
+  ['ETPMPT.AX', 'Physical Platinum'],
+  ['ETPMPD.AX', 'Physical Palladium'],
+  ['ETPMPM.AX', 'Precious Metals Basket'],
+  ['BCOM.AX', 'Bloomberg Commodity'],
+  ['GCO2.AX', 'Global Carbon'],
+  ['SEMI.AX', 'Semiconductors'],
+  ['FANG.AX', 'FANG+'],
+  ['FHNG.AX', 'FANG+ Hedged'],
+  ['TECH.AX', 'Global Technology'],
+  ['GXAI.AX', 'Artificial Intelligence'],
+  ['AINF.AX', 'AI Infrastructure'],
+  ['ROBO.AX', 'Robotics & Automation'],
+  ['HMND.AX', 'Humanoid Robotics'],
+  ['BUGG.AX', 'Cybersecurity'],
+  ['FTEC.XA', 'Fintech & Blockchain'],
+  ['ACDC.AX', 'Battery Tech & Lithium'],
+  ['ATOM.AX', 'Uranium'],
+  ['WIRE.AX', 'Copper Miners'],
+  ['HGEN.AX', 'Hydrogen'],
+  ['GMTL.AX', 'Green Metal Miners'],
+  ['CURE.AX', 'S&P Biotech'],
+  ['DTEC.AX', 'Defence Tech'],
+  ['NDIA.AX', 'India Nifty 50'],
+  ['DRGN.AX', 'China Tech'],
+  ['GARP.AX', 'World ex-AU GARP'],
+  ['U100.AX', 'US 100'],
+  ['N100.AX', 'US 100 ETF'],
+  ['A300.AX', 'Australia 300'],
+  ['OZXX.AX', 'Australia ex-Financials & Resources'],
+  ['ZYAU.AX', 'ASX 200 High Dividend'],
+  ['AYLD.AX', 'ASX 200 Covered Call'],
+  ['UYLD.AX', 'S&P 500 Covered Call'],
+  ['ZYUS.AX', 'S&P 500 High Yield Low Volatility'],
+  ['USTB.AX', 'US Treasury Bond Hedged'],
+  ['USHY.AX', 'USD High Yield Bond Hedged'],
+  ['USIG.AX', 'USD Corporate Bond Hedged'],
+  ['BANK.AX', 'Australian Bank Credit'],
+  ['EBTC.XA', 'Bitcoin ETF'],
+  ['EETH.XA', 'Ethereum ETF'],
+];
+
+async function mapWithConcurrency(items, limit, mapper) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await mapper(items[index], index);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
+function dailyReturnPoints(series) {
+  return series.slice(1).map((point, idx) => ({
+    date: point.date,
+    value: pctChange(point.close, series[idx].close)
+  })).filter(point => typeof point.value === 'number' && !isNaN(point.value));
+}
+
+async function getLowCorrelationEtfs(portfolioReturnPoints, cacheKey) {
+  if (lowCorrelationCache && lowCorrelationCache.cacheKey === cacheKey && Date.now() - lowCorrelationCache.loadedAt < LOW_CORRELATION_CACHE_MS) {
+    return lowCorrelationCache.data;
+  }
+
+  const portfolioReturnsByDate = new Map(portfolioReturnPoints.map(point => [point.date, point.value]));
+  const end = new Date();
+  const start = new Date(Date.now() - 60 * 24 * 3600 * 1000);
+  const rows = await mapWithConcurrency(GLOBAL_X_ASX_ETFS, 4, async ([ticker, name]) => {
+    try {
+      const series = await fetchYahooChart(ticker, start, end);
+      const returns = dailyReturnPoints(series);
+      const pairs = returns
+        .map(point => [portfolioReturnsByDate.get(point.date), point.value])
+        .filter(pair => typeof pair[0] === 'number' && typeof pair[1] === 'number' && !isNaN(pair[0]) && !isNaN(pair[1]));
+
+      if (pairs.length < 8) return null;
+
+      const first = series[0]?.close;
+      const last = series[series.length - 1]?.close;
+      return {
+        ticker: displayTicker(ticker),
+        symbol: ticker,
+        name,
+        correlation: correlation(pairs.map(pair => pair[0]), pairs.map(pair => pair[1])),
+        observations: pairs.length,
+        oneMonthReturn: pctChange(last, first),
+      };
+    } catch (error) {
+      console.warn('ETF correlation failed for', ticker, error?.message || error);
+      return null;
+    }
+  });
+
+  const data = rows
+    .filter(row => row && typeof row.correlation === 'number' && !isNaN(row.correlation))
+    .sort((a, b) => a.correlation - b.correlation)
+    .slice(0, 10);
+
+  lowCorrelationCache = { cacheKey, loadedAt: Date.now(), data };
+  return data;
+}
+
+async function fetchUsdToAudRate() {
+  const end = new Date();
+  const start = new Date(Date.now() - 14 * 24 * 3600 * 1000);
+  const series = await fetchYahooChart('AUDUSD=X', start, end);
+  const latestAudUsd = series[series.length - 1]?.close;
+  return latestAudUsd ? 1 / latestAudUsd : 1;
 }
 
 export default async function handler(req, res) {
@@ -289,6 +434,15 @@ export default async function handler(req, res) {
     const perTicker = {};
     const allocations = [];
     const latestDateIndex = allDates.length - 1;
+    let usdToAudRate = 1;
+
+    if (tickers.some(ticker => USD_ALLOCATION_TICKERS.has(ticker))) {
+      try {
+        usdToAudRate = await fetchUsdToAudRate();
+      } catch (error) {
+        console.warn('USD to AUD conversion failed', error?.message || error);
+      }
+    }
 
     for (const ticker of tickers) {
       const series = priceByTicker[ticker];
@@ -296,7 +450,8 @@ export default async function handler(req, res) {
       const tradesFor = trades.filter(t => t.Ticker === ticker);
       const totalUnits = tradesFor.reduce((sum, t) => sum + t.Units, 0);
       const avgPrice = totalUnits ? tradesFor.reduce((sum, t) => sum + t.Price * t.Units, 0) / totalUnits : null;
-      const positionValue = latestPrice != null ? latestPrice * totalUnits : 0;
+      const nativePositionValue = latestPrice != null ? latestPrice * totalUnits : 0;
+      const positionValue = USD_ALLOCATION_TICKERS.has(ticker) ? nativePositionValue * usdToAudRate : nativePositionValue;
       const totalReturn = (avgPrice && latestPrice) ? (latestPrice - avgPrice) / avgPrice : null;
 
       const tickerReturns = series.map((price, i, arr) => {
@@ -315,17 +470,26 @@ export default async function handler(req, res) {
         sharpe: tickerSharpe,
         returns: tickerReturns
       };
-      allocations.push({ ticker, units: totalUnits, latestPrice, positionValue });
+      allocations.push({
+        ticker,
+        units: totalUnits,
+        latestPrice,
+        positionValue,
+        nativePositionValue,
+        allocationCurrency: 'AUD'
+      });
     }
 
     const total_cost = trades.reduce((sum, trade) => sum + trade.Price * trade.Units, 0);
     const current_value = allocations.reduce((sum, item) => sum + item.positionValue, 0);
     const portfolio_return = total_cost ? (current_value - total_cost) / total_cost : null;
 
-    const weightedAllocations = allocations.map(item => ({
-      ...item,
-      weight: current_value ? item.positionValue / current_value : null
-    }));
+    const weightedAllocations = allocations
+      .map(item => ({
+        ...item,
+        weight: current_value ? item.positionValue / current_value : null
+      }))
+      .sort((a, b) => (b.weight || 0) - (a.weight || 0));
 
     const tickerReturnsMatrix = {};
     for (const ticker of tickers) {
@@ -348,10 +512,11 @@ export default async function handler(req, res) {
 
     // Calculate TWR
     const twrData = calculateTWR(trades, priceByTicker, allDates);
-    const twrReturns = twrData.values.map((value, idx, arr) => {
+    const portfolioReturnPoints = twrData.values.map((value, idx, arr) => {
       if (idx === 0) return null;
-      return pctChange(value, arr[idx - 1]);
-    }).slice(1).filter(ret => typeof ret === 'number' && !isNaN(ret));
+      return { date: allDates[idx], value: pctChange(value, arr[idx - 1]) };
+    }).slice(1).filter(point => point && typeof point.value === 'number' && !isNaN(point.value));
+    const twrReturns = portfolioReturnPoints.map(point => point.value);
     const portfolioSharpe = (twrReturns.length > 1 && std(twrReturns) > 0) ? mean(twrReturns) / std(twrReturns) * Math.sqrt(252) : null;
     const twrSeries = allDates.map((date, i) => ({ date, value: twrData.values[i] }));
     const drawdownSeries = allDates.map((date, i) => ({ date, value: calculateDrawdown(twrData.values)[i] }));
@@ -359,7 +524,9 @@ export default async function handler(req, res) {
     // Calculate standardized returns for each ticker
     const standardizedReturns = {};
     for (const ticker of tickers) {
-      standardizedReturns[ticker] = calculateStandardizedReturns(priceByTicker[ticker]);
+      standardizedReturns[ticker] = calculateStandardizedReturns(priceByTicker[ticker], {
+        useLatestNonZeroOneDay: ticker === 'DXYZ'
+      });
     }
 
     // Portfolio standardized returns from TWR
@@ -387,6 +554,11 @@ export default async function handler(req, res) {
       }
     }
 
+    const lowCorrelationEtfs = await getLowCorrelationEtfs(
+      portfolioReturnPoints.slice(-24),
+      `${allDates[allDates.length - 1]}:${twrData.values[twrData.values.length - 1]}:${tickers.join(',')}`
+    );
+
     return res.status(200).json({
       tickers: displayTickers,
       perTicker: displayPerTicker,
@@ -406,6 +578,7 @@ export default async function handler(req, res) {
       drawdownSeries,
       standardizedReturns: displayStandardizedReturns,
       correlationMatrix: displayCorrelationMatrix,
+      lowCorrelationEtfs,
       loaded_at: new Date().toISOString()
     });
   } catch (err) {

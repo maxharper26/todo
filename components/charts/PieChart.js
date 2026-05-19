@@ -1,9 +1,5 @@
 import { useState } from 'react';
 
-function formatCurrency(value) {
-  return value == null ? '-' : value.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
-}
-
 export default function PieChart({ allocations, size = 520 }) {
   const [hovered, setHovered] = useState(null);
   if (!allocations || allocations.length === 0) return null;
@@ -50,7 +46,7 @@ export default function PieChart({ allocations, size = 520 }) {
         {active && (
           <div style={{ textAlign: 'right', fontSize: 13, color: '#57606a' }}>
             <strong style={{ display: 'block', color: '#24292f', fontSize: 16 }}>{active.ticker} {active.pct.toFixed(1)}%</strong>
-            {formatCurrency(active.positionValue)}
+            By portfolio weight
           </div>
         )}
       </div>
@@ -88,8 +84,8 @@ export default function PieChart({ allocations, size = 520 }) {
             );
           })}
           <circle cx={cx} cy={cy} r={radius * 0.52} fill="#fff" />
-          <text x={cx} y={cy - 5} textAnchor="middle" fontSize="15" fill="#57606a">Total</text>
-          <text x={cx} y={cy + 18} textAnchor="middle" fontSize="20" fontWeight="700" fill="#24292f">{formatCurrency(total)}</text>
+          <text x={cx} y={cy - 5} textAnchor="middle" fontSize="15" fill="#57606a">Allocation</text>
+          <text x={cx} y={cy + 18} textAnchor="middle" fontSize="20" fontWeight="700" fill="#24292f">100%</text>
         </svg>
         <div style={{ display: 'grid', gap: 8 }}>
           {slices.map((slice, i) => (
