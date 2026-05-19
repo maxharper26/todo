@@ -327,7 +327,7 @@ async function getLowCorrelationEtfs(portfolioReturnPoints, cacheKey) {
   const data = rows
     .filter(row => row && typeof row.correlation === 'number' && !isNaN(row.correlation))
     .sort((a, b) => a.correlation - b.correlation)
-    .slice(0, 10);
+    .slice(0, 20);
 
   lowCorrelationCache = { cacheKey, loadedAt: Date.now(), data };
   return data;

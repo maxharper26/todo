@@ -168,27 +168,27 @@ export default function StocksPage() {
       </div>
 
       {lowCorrelationEtfs?.length > 0 && (
-        <div style={{marginBottom: 24, background:'#fff', border:'1px solid #d8dee4', borderRadius:8, padding: 18}}>
+        <div style={{marginBottom: 24, background:'#fff', borderRadius:8, padding: 18}}>
           <h2 style={{marginTop:0, marginBottom: 14}}>Lowest ETF Correlations</h2>
-          <div style={{overflowX:'auto'}}>
-            <table style={{width:'100%', minWidth:760, borderCollapse:'collapse'}}>
+          <div style={{overflowX:'auto', overflowY:'auto', maxHeight:480, borderRadius:6, border:'1px solid #d8dee4'}}>
+            <table style={{width:'100%', minWidth:600, borderCollapse:'collapse'}}>
               <thead>
-                <tr style={{textAlign:'left', borderBottom:'1px solid #d8dee4', color: '#57606a', fontSize: 13}}>
-                  <th style={{padding:'11px 8px'}}>Ticker</th>
-                  <th style={{padding:'11px 8px'}}>ETF</th>
-                  <th style={{padding:'11px 8px', textAlign:'right'}}>Correlation</th>
-                  <th style={{padding:'11px 8px', textAlign:'right'}}>1m Return</th>
-                  <th style={{padding:'11px 8px', textAlign:'right'}}>Days</th>
+                <tr style={{textAlign:'left', color: '#57606a', fontSize: 13, position:'sticky', top:0, background:'#f6f8fa', zIndex:1}}>
+                  <th style={{padding:'10px 12px', borderBottom:'2px solid #d8dee4', whiteSpace:'nowrap'}}>Ticker</th>
+                  <th style={{padding:'10px 12px', borderBottom:'2px solid #d8dee4'}}>ETF</th>
+                  <th style={{padding:'10px 12px', borderBottom:'2px solid #d8dee4', textAlign:'right', whiteSpace:'nowrap'}}>Correlation</th>
+                  <th style={{padding:'10px 12px', borderBottom:'2px solid #d8dee4', textAlign:'right', whiteSpace:'nowrap'}}>1m Return</th>
+                  <th style={{padding:'10px 12px', borderBottom:'2px solid #d8dee4', textAlign:'right', whiteSpace:'nowrap'}}>Days</th>
                 </tr>
               </thead>
               <tbody>
-                {lowCorrelationEtfs.map(item => (
-                  <tr key={item.symbol} style={{borderBottom:'1px solid #f0f0f0'}}>
-                    <td style={{padding:'11px 8px', fontWeight: 700}}>{item.ticker}</td>
-                    <td style={{padding:'11px 8px'}}>{item.name}</td>
-                    <td style={{padding:'11px 8px', textAlign:'right'}}>{fmt(item.correlation)}</td>
-                    <td style={{padding:'11px 8px', textAlign:'right'}}>{pct(item.oneMonthReturn)}</td>
-                    <td style={{padding:'11px 8px', textAlign:'right', color:'#57606a'}}>{item.observations}</td>
+                {lowCorrelationEtfs.map((item, i) => (
+                  <tr key={item.symbol} style={{borderBottom:'1px solid #f0f0f0', background: i % 2 === 0 ? '#fff' : '#fafafa'}}>
+                    <td style={{padding:'10px 12px', fontWeight:700, whiteSpace:'nowrap'}}>{item.ticker}</td>
+                    <td style={{padding:'10px 12px', color:'#24292f'}}>{item.name}</td>
+                    <td style={{padding:'10px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums', ...returnStyle(item.correlation != null ? -item.correlation : null)}}>{fmt(item.correlation)}</td>
+                    <td style={{padding:'10px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums', ...returnStyle(item.oneMonthReturn)}}>{pct(item.oneMonthReturn)}</td>
+                    <td style={{padding:'10px 12px', textAlign:'right', color:'#57606a'}}>{item.observations}</td>
                   </tr>
                 ))}
               </tbody>
