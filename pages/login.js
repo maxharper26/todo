@@ -41,7 +41,7 @@ export default function LoginPage() {
         padding: 32, width: 340, maxWidth: '90vw',
         boxShadow: '0 8px 40px rgba(0,0,0,.6)',
       }}>
-        <h1 style={{ color: '#e2e8f0', fontSize: 20, fontWeight: 700, marginBottom: 6 }}>Dashboard</h1>
+        <h1 style={{ color: '#e2e8f0', fontSize: 20, fontWeight: 700, marginBottom: 6 }}>Max Dashboard</h1>
         <p style={{ color: '#64748b', fontSize: '0.82rem', marginBottom: 24 }}>Enter password to continue.</p>
         <form onSubmit={handleSubmit}>
           <input
