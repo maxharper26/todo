@@ -75,22 +75,22 @@ export default function AreaChart({ points, comparatorPoints, comparatorLabel = 
   }
 
   return (
-    <div style={{ marginBottom: 24, background: '#fff', border: '1px solid #d8dee4', borderRadius: 8, padding: 18 }}>
+    <div style={{ marginBottom: 24, background: '#111118', border: '1px solid #1e1e2e', borderRadius: 8, padding: 18, color: '#e2e8f0' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 16, marginBottom: 12 }}>
         <h2 style={{ margin: 0, fontSize: 20 }}>{title}</h2>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           {hasComparator && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#57606a' }}>
-              <svg width="20" height="3"><line x1="0" y1="1.5" x2="20" y2="1.5" stroke="#8c959f" strokeWidth="2" strokeDasharray="4 3" /></svg>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#64748b' }}>
+              <svg width="20" height="3"><line x1="0" y1="1.5" x2="20" y2="1.5" stroke="#64748b" strokeWidth="2" strokeDasharray="4 3" /></svg>
               {comparatorLabel}
-              {activeComp && <strong style={{ color: '#8c959f', marginLeft: 4 }}>{formatPercent(activeComp.value)}</strong>}
+              {activeComp && <strong style={{ color: '#94a3b8', marginLeft: 4 }}>{formatPercent(activeComp.value)}</strong>}
             </div>
           )}
           {active && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#57606a' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#64748b' }}>
               <svg width="20" height="3"><line x1="0" y1="1.5" x2="20" y2="1.5" stroke={color} strokeWidth="3" /></svg>
               Portfolio
-              <strong style={{ color: active.value < 0 ? '#d1242f' : '#1a7f37', marginLeft: 4 }}>{formatPercent(active.value)}</strong>
+              <strong style={{ color: active.value < 0 ? '#ef4444' : '#22c55e', marginLeft: 4 }}>{formatPercent(active.value)}</strong>
               <span style={{ marginLeft: 4 }}>{formatDate(active.date)}</span>
             </div>
           )}
@@ -112,18 +112,18 @@ export default function AreaChart({ points, comparatorPoints, comparatorLabel = 
         </defs>
         {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
           const y = padding.top + ratio * innerHeight;
-          return <line key={ratio} x1={padding.left} x2={width - padding.right} y1={y} y2={y} stroke="#eaeef2" />;
+          return <line key={ratio} x1={padding.left} x2={width - padding.right} y1={y} y2={y} stroke="#1e1e2e" />;
         })}
         {[chart.max, (chart.max + chart.min) / 2, chart.min].map((tick, idx) => {
           const y = padding.top + innerHeight - ((tick - chart.min) / (chart.max - chart.min || 1)) * innerHeight;
           return (
-            <text key={idx} x={padding.left - 12} y={y + 4} textAnchor="end" fontSize="12" fill="#57606a">
+            <text key={idx} x={padding.left - 12} y={y + 4} textAnchor="end" fontSize="12" fill="#64748b">
               {formatPercent(tick)}
             </text>
           );
         })}
         {xTicks.map((tick, idx) => (
-          <text key={idx} x={tick.x} y={chartHeight - 12} textAnchor={idx === 0 ? 'start' : idx === 2 ? 'end' : 'middle'} fontSize="12" fill="#57606a">
+          <text key={idx} x={tick.x} y={chartHeight - 12} textAnchor={idx === 0 ? 'start' : idx === 2 ? 'end' : 'middle'} fontSize="12" fill="#64748b">
             {formatDate(tick.date)}
           </text>
         ))}
@@ -135,7 +135,7 @@ export default function AreaChart({ points, comparatorPoints, comparatorLabel = 
           <g>
             <line x1={active.x} x2={active.x} y1={padding.top} y2={padding.top + innerHeight} stroke="#8c959f" strokeDasharray="4 5" />
             {activeComp && <circle cx={activeComp.x} cy={activeComp.y} r="5" fill="#fff" stroke="#8c959f" strokeWidth="2" />}
-            <circle cx={active.x} cy={active.y} r="6" fill="#fff" stroke={color} strokeWidth="3" />
+            <circle cx={active.x} cy={active.y} r="6" fill="#111118" stroke={color} strokeWidth="3" />
           </g>
         )}
       </svg>

@@ -8,7 +8,7 @@ function formatValue(value) {
   return value == null ? '-' : value.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
-export default function LineChart({ points, comparatorPoints, comparatorLabel = 'MSCI World (VGS)', height = 360, title = '', color = '#0969da' }) {
+export default function LineChart({ points, comparatorPoints, comparatorLabel = 'MSCI World (VGS)', height = 360, title = '', color = '#6366f1', avgPrice = null }) {
   const [hovered, setHovered] = useState(null);
   const hasData = points && points.length >= 2;
   const hasComparator = comparatorPoints && comparatorPoints.length >= 2;
@@ -25,6 +25,7 @@ export default function LineChart({ points, comparatorPoints, comparatorLabel = 
     const values = points.map((point) => point.value).filter((value) => typeof value === 'number' && !Number.isNaN(value));
     let rawMin = Math.min(...values);
     let rawMax = Math.max(...values);
+    if (avgPrice != null) { rawMin = Math.min(rawMin, avgPrice); rawMax = Math.max(rawMax, avgPrice); }
 
     // Rebase comparator to same start value as portfolio
     let compMapped = [];
@@ -74,7 +75,7 @@ export default function LineChart({ points, comparatorPoints, comparatorLabel = 
     const yTicks = [max, min + range * 0.5, min];
 
     return { mapped, path, min, max, yTicks, compMapped, compPath };
-  }, [points, comparatorPoints, hasData, hasComparator, innerHeight, innerWidth]);
+  }, [points, comparatorPoints, hasData, hasComparator, innerHeight, innerWidth, avgPrice]);
 
   if (!hasData) return null;
 
@@ -91,19 +92,19 @@ export default function LineChart({ points, comparatorPoints, comparatorLabel = 
   }
 
   return (
-    <div style={{ marginBottom: 24, background: '#fff', border: '1px solid #d8dee4', borderRadius: 8, padding: 18 }}>
+    <div style={{ marginBottom: 24, background: '#111118', border: '1px solid #1e1e2e', borderRadius: 8, padding: 18, color: '#e2e8f0' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 16, marginBottom: 12 }}>
         <h2 style={{ margin: 0, fontSize: 20 }}>{title}</h2>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           {hasComparator && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#57606a' }}>
-              <svg width="20" height="3"><line x1="0" y1="1.5" x2="20" y2="1.5" stroke="#8c959f" strokeWidth="2" strokeDasharray="4 3" /></svg>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#64748b' }}>
+              <svg width="20" height="3"><line x1="0" y1="1.5" x2="20" y2="1.5" stroke="#64748b" strokeWidth="2" strokeDasharray="4 3" /></svg>
               {comparatorLabel}
-              {activeComp && <strong style={{ color: '#8c959f', marginLeft: 4 }}>{formatValue(activeComp.value)}</strong>}
+              {activeComp && <strong style={{ color: '#94a3b8', marginLeft: 4 }}>{formatValue(activeComp.value)}</strong>}
             </div>
           )}
           {active && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#57606a' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#64748b' }}>
               <svg width="20" height="3"><line x1="0" y1="1.5" x2="20" y2="1.5" stroke={color} strokeWidth="3" /></svg>
               Portfolio
               <strong style={{ color, marginLeft: 4 }}>{formatValue(active.value)}</strong>
@@ -128,29 +129,38 @@ export default function LineChart({ points, comparatorPoints, comparatorLabel = 
         </defs>
         {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
           const y = padding.top + ratio * innerHeight;
-          return <line key={ratio} x1={padding.left} x2={width - padding.right} y1={y} y2={y} stroke="#eaeef2" />;
+          return <line key={ratio} x1={padding.left} x2={width - padding.right} y1={y} y2={y} stroke="#1e1e2e" />;
         })}
         {chart.yTicks.map((tick, idx) => {
           const y = padding.top + innerHeight - ((tick - chart.min) / (chart.max - chart.min || 1)) * innerHeight;
           return (
-            <text key={idx} x={padding.left - 12} y={y + 4} textAnchor="end" fontSize="12" fill="#57606a">
+            <text key={idx} x={padding.left - 12} y={y + 4} textAnchor="end" fontSize="12" fill="#64748b">
               {formatValue(tick)}
             </text>
           );
         })}
         {xTicks.map((tick, idx) => (
-          <text key={idx} x={tick.x} y={chartHeight - 12} textAnchor={idx === 0 ? 'start' : idx === 2 ? 'end' : 'middle'} fontSize="12" fill="#57606a">
+          <text key={idx} x={tick.x} y={chartHeight - 12} textAnchor={idx === 0 ? 'start' : idx === 2 ? 'end' : 'middle'} fontSize="12" fill="#64748b">
             {formatDate(tick.date)}
           </text>
         ))}
         <path d={`${chart.path} L ${chart.mapped[chart.mapped.length - 1].x} ${padding.top + innerHeight} L ${chart.mapped[0].x} ${padding.top + innerHeight} Z`} fill="url(#lineFade)" />
+        {avgPrice != null && (() => {
+          const y = padding.top + innerHeight - ((avgPrice - chart.min) / (chart.max - chart.min || 1)) * innerHeight;
+          return (
+            <g>
+              <line x1={padding.left} x2={width - padding.right} y1={y} y2={y} stroke="#f59e0b" strokeWidth="1.5" strokeDasharray="5 4" opacity="0.8" />
+              <text x={width - padding.right + 4} y={y + 4} fontSize="11" fill="#f59e0b" opacity="0.9">avg</text>
+            </g>
+          );
+        })()}
         <path d={chart.path} fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
         {chart.compPath && <path d={chart.compPath} fill="none" stroke="#8c959f" strokeWidth="2" strokeDasharray="6 4" strokeLinecap="round" />}
         {active && (
           <g>
             <line x1={active.x} x2={active.x} y1={padding.top} y2={padding.top + innerHeight} stroke="#8c959f" strokeDasharray="4 5" />
             {activeComp && <circle cx={activeComp.x} cy={activeComp.y} r="5" fill="#fff" stroke="#8c959f" strokeWidth="2" />}
-            <circle cx={active.x} cy={active.y} r="6" fill="#fff" stroke={color} strokeWidth="3" />
+            <circle cx={active.x} cy={active.y} r="6" fill="#111118" stroke={color} strokeWidth="3" />
           </g>
         )}
       </svg>

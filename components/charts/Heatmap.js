@@ -20,13 +20,13 @@ export default function Heatmap({ matrix, tickers, size = 540 }) {
   const active = hovered ? matrix[hovered.row]?.[hovered.col] : null;
 
   return (
-    <div style={{ marginBottom: 24, background: '#fff', border: '1px solid #d8dee4', borderRadius: 8, padding: 18 }}>
+    <div style={{ marginBottom: 24, background: '#111118', border: '1px solid #1e1e2e', borderRadius: 8, padding: 18, color: '#e2e8f0' }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 16, marginBottom: 12 }}>
         <h2 style={{ margin: 0, fontSize: 20 }}>Correlation Matrix</h2>
-        <div style={{ minHeight: 20, color: '#57606a', fontSize: 13, textAlign: 'right' }}>
+        <div style={{ minHeight: 20, color: '#64748b', fontSize: 13, textAlign: 'right' }}>
           {hovered ? (
             <>
-              <strong style={{ color: '#24292f' }}>{hovered.row} / {hovered.col}</strong> {active == null ? '-' : `${(active * 100).toFixed(1)}%`}
+              <strong style={{ color: '#e2e8f0' }}>{hovered.row} / {hovered.col}</strong> {active == null ? '-' : `${(active * 100).toFixed(1)}%`}
             </>
           ) : 'Hover cells'}
         </div>
@@ -39,13 +39,13 @@ export default function Heatmap({ matrix, tickers, size = 540 }) {
         onMouseLeave={() => setHovered(null)}
       >
         {tickers.map((ticker, i) => (
-          <text key={`col-${i}`} x={labelSize + i * cellSize + cellSize / 2} y={labelSize - 16} fontSize="13" textAnchor="middle" fill="#57606a">
+          <text key={`col-${i}`} x={labelSize + i * cellSize + cellSize / 2} y={labelSize - 16} fontSize="13" textAnchor="middle" fill="#64748b">
             {ticker}
           </text>
         ))}
         {tickers.map((t1, i1) => (
           <g key={`row-${i1}`}>
-            <text x={labelSize - 12} y={labelSize + i1 * cellSize + cellSize / 2} fontSize="13" textAnchor="end" dominantBaseline="middle" fill="#57606a">
+            <text x={labelSize - 12} y={labelSize + i1 * cellSize + cellSize / 2} fontSize="13" textAnchor="end" dominantBaseline="middle" fill="#64748b">
               {t1}
             </text>
             {tickers.map((t2, i2) => {
@@ -63,7 +63,7 @@ export default function Heatmap({ matrix, tickers, size = 540 }) {
                     rx="5"
                     fill={color}
                     opacity={!hovered || isRelated ? 1 : 0.35}
-                    stroke={isActive ? '#24292f' : '#fff'}
+                    stroke={isActive ? '#e2e8f0' : '#111118'}
                     strokeWidth={isActive ? 3 : 1}
                   />
                   <text
@@ -72,7 +72,7 @@ export default function Heatmap({ matrix, tickers, size = 540 }) {
                     fontSize={cellSize < 48 ? '10' : '12'}
                     textAnchor="middle"
                     dominantBaseline="middle"
-                    fill="#24292f"
+                    fill="#111118"
                     pointerEvents="none"
                   >
                     {val != null ? (val * 100).toFixed(0) : '-'}%

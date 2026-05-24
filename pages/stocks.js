@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { AreaChart, Heatmap, LineChart, PieChart } from '../components/charts';
 
@@ -12,9 +13,9 @@ function fmt(n) {
 }
 
 function returnStyle(value, strong = false) {
-  if (value == null) return { color: '#57606a' };
+  if (value == null) return { color: '#64748b' };
   return {
-    color: value > 0 ? '#1a7f37' : value < 0 ? '#d1242f' : '#57606a',
+    color: value > 0 ? '#22c55e' : value < 0 ? '#ef4444' : '#64748b',
     fontWeight: strong ? 700 : 500,
   };
 }
@@ -27,15 +28,18 @@ function mixColor(from, to, amount) {
 
 function conditionalCellStyle(value, stats, strong = false) {
   const style = {
-    color: value == null ? '#57606a' : '#24292f',
+    color: value == null ? '#64748b' : '#e2e8f0',
     fontWeight: strong ? 700 : 500,
   };
-  if (value == null || !stats || stats.min === stats.max) return style;
+  if (value == null || !stats || stats.sortedValues.length < 2) return style;
 
-  const ratio = (value - stats.min) / (stats.max - stats.min);
-  const red = [255, 235, 232];
-  const white = [255, 255, 255];
-  const green = [229, 245, 234];
+  const sorted = stats.sortedValues;
+  const rank = sorted.filter(v => v <= value).length - 1;
+  const ratio = rank / (sorted.length - 1);
+
+  const red   = [50, 20, 20];
+  const white = [22, 22, 31];
+  const green = [20, 50, 25];
 
   return {
     ...style,
@@ -49,111 +53,265 @@ function getColumnStats(rows, key) {
   const values = rows
     .map(row => row[key])
     .filter(value => typeof value === 'number' && !Number.isNaN(value));
-
   if (!values.length) return null;
-  return {
-    min: Math.min(...values),
-    max: Math.max(...values),
-  };
+  return { sortedValues: [...values].sort((a, b) => a - b) };
 }
+
+const SECTORS = [
+  'US Equity', 'Non-US Developed Equity', 'EM Equity', 'VC',
+  'Gold', 'Commodities', 'Fixed Income', 'Infrastructure', 'Hedged Equities',
+  'Real Estate', 'Crypto', 'Alternatives',
+];
+
+const TRADE_FORM_DEFAULT = { ticker: '', date: new Date().toISOString().slice(0, 10), price: '', units: '', action: 'buy', sector: '' };
 
 export default function StocksPage() {
   const [data, setData] = useState(null);
-  const [cot, setCot] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [etfData, setEtfData] = useState(null);
+  const [etfLoading, setEtfLoading] = useState(false);
+  const [tradeModal, setTradeModal] = useState(false);
+  const [tradeForm, setTradeForm] = useState(TRADE_FORM_DEFAULT);
+  const [tradeSubmitting, setTradeSubmitting] = useState(false);
+  const [tradeError, setTradeError] = useState(null);
 
-  useEffect(() => {
-    async function load() {
-      setLoading(true);
-      setError(null);
-      try {
-        const [res, cotRes] = await Promise.all([fetch('/api/stocks'), fetch('/api/cot')]);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = await res.json();
-        const cotJson = await cotRes.json();
-        setData(json);
-        setCot(cotJson);
-      } catch (err) {
-        setError(err.message || 'Failed to load stock data.');
-      } finally {
-        setLoading(false);
-      }
+  async function load() {
+    setLoading(true);
+    setError(null);
+    setEtfData(null);
+    try {
+      const res = await fetch('/api/stocks');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setData(await res.json());
+    } catch (err) {
+      setError(err.message || 'Failed to load stock data.');
+    } finally {
+      setLoading(false);
     }
-    load();
-  }, []);
+  }
 
-  if (loading) return <div style={{padding:20}}><h1>Stocks</h1><p>Loading latest market data…</p></div>;
-  if (error) return <div style={{padding:20}}><h1>Stocks</h1><p style={{color:'red'}}>{error}</p></div>;
-  if (!data) return <div style={{padding:20}}>No data</div>;
+  async function loadEtfs() {
+    setEtfLoading(true);
+    try {
+      const res = await fetch('/api/etf-correlations');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setEtfData(await res.json());
+    } catch (err) {
+      console.warn('ETF correlations failed:', err.message);
+    } finally {
+      setEtfLoading(false);
+    }
+  }
 
-  const { perTicker, portfolio, allocations, twrSeries, drawdownSeries, benchmarkTwrSeries, benchmarkDrawdownSeries, standardizedReturns, correlationMatrix, lowCorrelationEtfs, tickers, loaded_at } = data;
+  useEffect(() => { load(); }, []);
+  useEffect(() => { if (data) loadEtfs(); }, [data]);
+
+  async function submitTrade() {
+    const { ticker, date, price, units, action } = tradeForm;
+    if (!ticker || !date || !price || !units) {
+      setTradeError('All fields are required.');
+      return;
+    }
+    setTradeSubmitting(true);
+    setTradeError(null);
+    try {
+      const res = await fetch('/api/portfolio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticker, date, price: Number(price), units: Number(units), action, sector: tradeForm.sector || null }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+      setTradeModal(false);
+      setTradeForm(TRADE_FORM_DEFAULT);
+      load();
+    } catch (err) {
+      setTradeError(err.message);
+    } finally {
+      setTradeSubmitting(false);
+    }
+  }
+
+  if (loading) return <div className="stocks-loading"><h1>Stocks</h1><p>Loading latest market data…</p></div>;
+  if (error)   return <div className="stocks-loading"><h1>Stocks</h1><p className="stocks-error">{error}</p></div>;
+  if (!data)   return <div className="stocks-loading">No data</div>;
+
+  const { perTicker, portfolio, allocations, twrSeries, drawdownSeries, benchmarkTwrSeries, benchmarkDrawdownSeries, standardizedReturns, correlationMatrix, priceSeries, sectorAllocations, tickers, loaded_at } = data;
+  const lowCorrelationEtfs = etfData?.lowCorrelationEtfs;
+  const etfUpdatedAt = etfData?.etfUpdatedAt;
+
   const portfolioTotalReturn = twrSeries?.length ? (twrSeries[twrSeries.length - 1].value - 100) / 100 : null;
   const returnRows = standardizedReturns ? [
     {
-      asset: 'Portfolio',
-      isPortfolio: true,
+      asset: 'Portfolio', isPortfolio: true,
       totalReturn: portfolioTotalReturn,
-      oneDay: standardizedReturns.Portfolio?.['1d'],
-      oneWeek: standardizedReturns.Portfolio?.['1w'],
+      oneDay:   standardizedReturns.Portfolio?.['1d'],
+      oneWeek:  standardizedReturns.Portfolio?.['1w'],
       oneMonth: standardizedReturns.Portfolio?.['1m'],
-      oneYear: standardizedReturns.Portfolio?.['1y'],
       sharpe: portfolio?.sharpe,
+      beta: portfolio?.beta,
     },
     ...tickers.map(ticker => ({
       asset: ticker,
+      latestPrice: perTicker[ticker]?.latestPrice,
       totalReturn: perTicker[ticker]?.totalReturn,
-      oneDay: standardizedReturns[ticker]?.['1d'],
-      oneWeek: standardizedReturns[ticker]?.['1w'],
+      oneDay:   standardizedReturns[ticker]?.['1d'],
+      oneWeek:  standardizedReturns[ticker]?.['1w'],
       oneMonth: standardizedReturns[ticker]?.['1m'],
-      oneYear: standardizedReturns[ticker]?.['1y'],
       sharpe: perTicker[ticker]?.sharpe,
+      beta: perTicker[ticker]?.beta,
     }))
   ] : [];
+
   const columnStats = {
     totalReturn: getColumnStats(returnRows, 'totalReturn'),
-    oneDay: getColumnStats(returnRows, 'oneDay'),
-    oneWeek: getColumnStats(returnRows, 'oneWeek'),
-    oneMonth: getColumnStats(returnRows, 'oneMonth'),
-    oneYear: getColumnStats(returnRows, 'oneYear'),
-    sharpe: getColumnStats(returnRows, 'sharpe'),
+    oneDay:      getColumnStats(returnRows, 'oneDay'),
+    oneWeek:     getColumnStats(returnRows, 'oneWeek'),
+    oneMonth:    getColumnStats(returnRows, 'oneMonth'),
+    sharpe:      getColumnStats(returnRows, 'sharpe'),
+    beta:        getColumnStats(returnRows, 'beta'),
   };
 
   return (
-    <div style={{padding:20, maxWidth: 1280, margin: '0 auto'}}>
-      <h1 style={{marginTop: 0}}>Stocks</h1>
+    <div className="stocks-page">
 
-      <div style={{marginBottom: 24, background:'#fff', border:'1px solid #d8dee4', borderRadius:8, padding: 18}}>
-        <h2 style={{marginTop:0, marginBottom: 14}}>Standardized Returns</h2>
-        <div style={{overflowX:'auto'}}>
-          <table style={{width:'100%', minWidth:920, borderCollapse:'collapse'}}>
+      {/* Header */}
+      <div className="page-header">
+        <h1>Stocks</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button className="btn btn-primary" onClick={() => { setTradeModal(true); setTradeError(null); }}>+ Add trade</button>
+          <Link href="/todo" style={{ padding: '6px 12px', borderRadius: 6, background: '#6366f1', border: '1px solid #6366f1', color: '#fff', textDecoration: 'none', fontSize: '0.82rem', fontWeight: 500 }}>Todo</Link>
+        </div>
+      </div>
+
+      {/* Trade modal */}
+      {tradeModal && (
+        <div className="modal-overlay open" onClick={e => { if (e.target === e.currentTarget) setTradeModal(false); }}>
+          <div className="modal">
+            <h2>Add trade</h2>
+
+            <div className="trade-field-group">
+              <label>Action</label>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {['buy', 'sell'].map(a => (
+                  <button
+                    key={a}
+                    className="trade-action-btn"
+                    onClick={() => setTradeForm(f => ({ ...f, action: a }))}
+                    style={{
+                      border: tradeForm.action === a ? 'none' : '1px solid var(--border-2)',
+                      background: tradeForm.action === a ? (a === 'buy' ? '#22c55e' : '#ef4444') : 'var(--surface-2)',
+                      color: tradeForm.action === a ? '#fff' : 'var(--text-muted)',
+                    }}
+                  >{a.charAt(0).toUpperCase() + a.slice(1)}</button>
+                ))}
+              </div>
+            </div>
+
+            {[['Ticker', 'ticker', 'text', 'e.g. IVV.AX'], ['Date', 'date', 'date', ''], ['Price', 'price', 'number', '0.00'], ['Units', 'units', 'number', '0']].map(([lbl, key, type, placeholder]) => (
+              <div key={key} className="form-group">
+                <label>{lbl}</label>
+                <input
+                  type={type}
+                  placeholder={placeholder}
+                  value={tradeForm[key]}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setTradeForm(f => {
+                      const update = { ...f, [key]: val };
+                      // Auto-fill sector from existing holding when ticker is entered
+                      if (key === 'ticker' && !f.sector) {
+                        const match = allocations?.find(a => a.ticker?.toUpperCase() === val.toUpperCase().replace(/\.AX$/i, '') || a.symbol?.toUpperCase() === val.toUpperCase());
+                        if (match?.sector) update.sector = match.sector;
+                      }
+                      return update;
+                    });
+                  }}
+                />
+              </div>
+            ))}
+
+            <div className="form-group">
+              <label>Sector</label>
+              <select value={tradeForm.sector} onChange={e => setTradeForm(f => ({ ...f, sector: e.target.value }))}>
+                <option value="">— select —</option>
+                {SECTORS.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+
+            {tradeError && <p className="trade-error">{tradeError}</p>}
+
+            <div className="modal-actions">
+              <button className="btn btn-ghost" onClick={() => setTradeModal(false)}>Cancel</button>
+              <button
+                className="btn"
+                onClick={submitTrade}
+                disabled={tradeSubmitting}
+                style={{
+                  background: tradeForm.action === 'sell' ? '#ef4444' : '#22c55e',
+                  border: 'none', color: '#fff',
+                  opacity: tradeSubmitting ? 0.7 : 1,
+                }}
+              >{tradeSubmitting ? 'Saving…' : `Confirm ${tradeForm.action}`}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Summary stats */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+        {[
+          // { label: 'Market Value',  value: portfolio?.current_value != null ? `${fmt(portfolio.current_value)}` : '—' },
+          // { label: 'Cost Basis',    value: portfolio?.total_cost    != null ? `${fmt(portfolio.total_cost)}`    : '—' },
+          { label: 'P&L',          value: portfolio?.current_value != null && portfolio?.total_cost != null
+            ? `${fmt(portfolio.current_value - portfolio.total_cost)}`
+            : '—',
+            colour: portfolio?.current_value != null && portfolio?.total_cost != null
+              ? portfolio.current_value >= portfolio.total_cost ? '#22c55e' : '#ef4444'
+              : '#64748b' },
+          { label: 'Total Return',  value: portfolio?.portfolio_return != null ? pct(portfolio.portfolio_return) : '—',
+            colour: portfolio?.portfolio_return != null
+              ? portfolio.portfolio_return >= 0 ? '#22c55e' : '#ef4444'
+              : '#64748b' },
+          { label: 'Sharpe',        value: portfolio?.sharpe != null ? fmt(portfolio.sharpe) : '—' },
+          { label: 'Beta (vs VGS)', value: portfolio?.beta   != null ? fmt(portfolio.beta)   : '—' },
+        ].map(({ label, value, colour }) => (
+          <div key={label} style={{ background: '#111118', border: '1px solid #1e1e2e', borderRadius: 8, padding: '12px 18px', minWidth: 130 }}>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', marginBottom: 4 }}>{label}</div>
+            <div style={{ fontSize: '1.05rem', fontWeight: 700, color: colour || '#e2e8f0', userSelect: 'text' }}>{value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Standardized Returns */}
+      <div className="panel">
+        <h2>Standardized Returns</h2>
+        <div className="panel-scroll">
+          <table className="returns-table">
             <thead>
-              <tr style={{textAlign:'left', borderBottom:'1px solid #d8dee4', color: '#57606a', fontSize: 13}}>
-                <th style={{padding:'11px 8px'}}>Asset</th>
-                <th style={{padding:'11px 8px', textAlign:'right'}}>Total Return</th>
-                <th style={{padding:'11px 8px', textAlign:'right'}}>1d</th>
-                <th style={{padding:'11px 8px', textAlign:'right'}}>1w</th>
-                <th style={{padding:'11px 8px', textAlign:'right'}}>1m</th>
-                <th style={{padding:'11px 8px', textAlign:'right'}}>1y</th>
-                <th style={{padding:'11px 8px', textAlign:'right'}}>Sharpe Ratio</th>
+              <tr>
+                <th>Asset</th>
+                <th>Price</th>
+                <th>Total Return</th>
+                <th>1d</th><th>1w</th><th>1m</th>
+                <th>Sharpe</th>
+                <th>Beta</th>
               </tr>
             </thead>
             <tbody>
               {returnRows.map(row => (
-                <tr
-                  key={row.asset}
-                  style={{
-                    fontWeight: row.isPortfolio ? 'bold' : 'normal',
-                    borderBottom: row.isPortfolio ? '1px solid #d8dee4' : '1px solid #f0f0f0',
-                  }}
-                >
-                  <td style={{padding: row.isPortfolio ? '12px 8px' : '11px 8px', fontWeight: row.isPortfolio ? 700 : 600}}>{row.asset}</td>
-                  <td style={{padding: row.isPortfolio ? '12px 8px' : '11px 8px', textAlign:'right', ...conditionalCellStyle(row.totalReturn, columnStats.totalReturn, row.isPortfolio)}}>{pct(row.totalReturn)}</td>
-                  <td style={{padding: row.isPortfolio ? '12px 8px' : '11px 8px', textAlign:'right', ...conditionalCellStyle(row.oneDay, columnStats.oneDay, row.isPortfolio)}}>{pct(row.oneDay)}</td>
-                  <td style={{padding: row.isPortfolio ? '12px 8px' : '11px 8px', textAlign:'right', ...conditionalCellStyle(row.oneWeek, columnStats.oneWeek, row.isPortfolio)}}>{pct(row.oneWeek)}</td>
-                  <td style={{padding: row.isPortfolio ? '12px 8px' : '11px 8px', textAlign:'right', ...conditionalCellStyle(row.oneMonth, columnStats.oneMonth, row.isPortfolio)}}>{pct(row.oneMonth)}</td>
-                  <td style={{padding: row.isPortfolio ? '12px 8px' : '11px 8px', textAlign:'right', ...conditionalCellStyle(row.oneYear, columnStats.oneYear, row.isPortfolio)}}>{pct(row.oneYear)}</td>
-                  <td style={{padding: row.isPortfolio ? '12px 8px' : '11px 8px', textAlign:'right', ...conditionalCellStyle(row.sharpe, columnStats.sharpe, row.isPortfolio)}}>{fmt(row.sharpe)}</td>
+                <tr key={row.asset} className={row.isPortfolio ? 'row-portfolio' : 'row-ticker'}>
+                  <td style={{ fontWeight: row.isPortfolio ? 700 : 600 }}>{row.asset}</td>
+                  <td className="num" style={{ color: '#64748b' }}>{row.latestPrice != null ? fmt(row.latestPrice) : '—'}</td>
+                  <td className="num" style={conditionalCellStyle(row.totalReturn, columnStats.totalReturn, row.isPortfolio)}>{pct(row.totalReturn)}</td>
+                  <td className="num" style={conditionalCellStyle(row.oneDay,    columnStats.oneDay,    row.isPortfolio)}>{pct(row.oneDay)}</td>
+                  <td className="num" style={conditionalCellStyle(row.oneWeek,   columnStats.oneWeek,   row.isPortfolio)}>{pct(row.oneWeek)}</td>
+                  <td className="num" style={conditionalCellStyle(row.oneMonth,  columnStats.oneMonth,  row.isPortfolio)}>{pct(row.oneMonth)}</td>
+                  <td className="num" style={conditionalCellStyle(row.sharpe,    columnStats.sharpe,    row.isPortfolio)}>{fmt(row.sharpe)}</td>
+                  <td className="num" style={conditionalCellStyle(row.beta,      columnStats.beta,      row.isPortfolio)}>{row.beta != null ? fmt(row.beta) : '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -162,36 +320,160 @@ export default function StocksPage() {
       </div>
 
       {twrSeries && <LineChart points={twrSeries} comparatorPoints={benchmarkTwrSeries} height={390} title="Cumulative Portfolio TWR" />}
+      {drawdownSeries && <AreaChart points={drawdownSeries} comparatorPoints={benchmarkDrawdownSeries} height={340} title="Drawdown" color="#ef4444" />}
 
-      {drawdownSeries && <AreaChart points={drawdownSeries} comparatorPoints={benchmarkDrawdownSeries} height={340} title="Drawdown" color="#d1242f" />}
-
-      <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(min(100%, 500px), 1fr))', gap: 24, marginBottom: 24}}>
+      {/* Charts grid */}
+      <div className="chart-grid">
         {correlationMatrix && <Heatmap matrix={correlationMatrix} tickers={tickers} size={540} />}
-        {allocations && <PieChart allocations={allocations} size={520} />}
+        {allocations && <PieChart allocations={allocations} sectorAllocations={sectorAllocations} size={520} />}
       </div>
 
-      {lowCorrelationEtfs?.length > 0 && (
-        <div style={{marginBottom: 24, background:'#fff', borderRadius:8, padding: 18}}>
-          <h2 style={{marginTop:0, marginBottom: 14}}>Lowest ETF Correlations</h2>
-          <div style={{overflowX:'auto', overflowY:'auto', maxHeight:480, borderRadius:6, border:'1px solid #d8dee4'}}>
-            <table style={{width:'100%', minWidth:600, borderCollapse:'collapse'}}>
+      {/* ETF Correlations */}
+      {etfLoading && (
+        <div style={{ marginBottom: 24, background: '#111118', border: '1px solid #1e1e2e', borderRadius: 8, padding: '14px 18px', color: '#3a3a52', fontSize: '0.85rem' }}>
+          ETF correlations loading…
+        </div>
+      )}
+      {!etfLoading && lowCorrelationEtfs?.length > 0 && <EtfCorrelations etfs={lowCorrelationEtfs} updatedAt={etfUpdatedAt} />}
+
+      {priceSeries && tickers.length > 0 && <TickerChart priceSeries={priceSeries} tickers={tickers} perTicker={perTicker} />}
+
+      <TradeHistory onDelete={load} />
+
+      <div className="last-updated">Last updated: {new Date(loaded_at).toLocaleString()}</div>
+    </div>
+  );
+}
+
+function TradeHistory({ onDelete }) {
+  const [open, setOpen] = useState(false);
+  const [trades, setTrades] = useState(null);
+  const [deleting, setDeleting] = useState(null);
+
+  async function fetchTrades() {
+    try {
+      const res = await fetch('/api/portfolio');
+      const data = await res.json();
+      setTrades(data.sort((a, b) => b.date.localeCompare(a.date)));
+    } catch (e) {
+      setTrades([]);
+    }
+  }
+
+  function handleOpen() {
+    setOpen(o => {
+      if (!o && !trades) fetchTrades();
+      return !o;
+    });
+  }
+
+  async function handleDelete(id) {
+    if (!confirm('Delete this trade?')) return;
+    setDeleting(id);
+    try {
+      await fetch(`/api/portfolio?id=${id}`, { method: 'DELETE' });
+      setTrades(t => t.filter(x => x.id !== id));
+      onDelete();
+    } finally {
+      setDeleting(null);
+    }
+  }
+
+  return (
+    <div style={{ marginBottom: 24, background: '#111118', border: '1px solid #1e1e2e', borderRadius: 8, color: '#e2e8f0' }}>
+      <div onClick={handleOpen} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', cursor: 'pointer', userSelect: 'none' }}>
+        <h2 style={{ margin: 0, fontSize: 20 }}>Trade History</h2>
+        <span style={{ fontSize: '0.65rem', color: '#64748b', display: 'inline-block', transition: 'transform 0.2s', transform: open ? 'rotate(90deg)' : 'none' }}>▶</span>
+      </div>
+      {open && (
+        <div style={{ padding: '0 18px 18px' }}>
+          {!trades ? (
+            <p style={{ color: '#64748b', fontSize: '0.85rem' }}>Loading…</p>
+          ) : trades.length === 0 ? (
+            <p style={{ color: '#64748b', fontSize: '0.85rem' }}>No trades.</p>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                <thead>
+                  <tr style={{ color: '#64748b', borderBottom: '1px solid #1e1e2e', textAlign: 'left' }}>
+                    <th style={{ padding: '8px 10px' }}>Date</th>
+                    <th style={{ padding: '8px 10px' }}>Ticker</th>
+                    <th style={{ padding: '8px 10px' }}>Action</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right' }}>Units</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right' }}>Price</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right' }}>Value</th>
+                    <th style={{ padding: '8px 10px' }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {trades.map((t, i) => (
+                    <tr key={t.id} style={{ borderBottom: '1px solid #16161f', background: i % 2 === 0 ? '#111118' : '#16161f' }}>
+                      <td style={{ padding: '8px 10px', color: '#94a3b8', userSelect: 'text' }}>{t.date}</td>
+                      <td style={{ padding: '8px 10px', fontWeight: 700, userSelect: 'text' }}>{t.ticker}</td>
+                      <td style={{ padding: '8px 10px' }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 600, padding: '2px 7px', borderRadius: 4,
+                          background: t.action === 'buy' ? 'rgba(34,197,94,.15)' : 'rgba(239,68,68,.15)',
+                          color: t.action === 'buy' ? '#22c55e' : '#ef4444' }}>
+                          {t.action.toUpperCase()}
+                        </span>
+                      </td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', userSelect: 'text' }}>{t.units}</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', userSelect: 'text' }}>{fmt(t.price)}</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#94a3b8', userSelect: 'text' }}>{fmt(t.price * t.units)}</td>
+                      <td style={{ padding: '8px 10px' }}>
+                        <button
+                          onClick={() => handleDelete(t.id)}
+                          disabled={deleting === t.id}
+                          style={{ fontSize: '0.72rem', border: '1px solid #2a2a3d', borderRadius: 4, padding: '2px 8px', cursor: 'pointer', background: '#16161f', color: '#64748b', opacity: deleting === t.id ? 0.5 : 1 }}
+                        >{deleting === t.id ? '…' : 'Delete'}</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EtfCorrelations({ etfs, updatedAt }) {
+  const [open, setOpen] = useState(false);
+  const age = updatedAt
+    ? new Date(updatedAt).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
+    : null;
+  return (
+    <div style={{ marginBottom: 24, background: '#111118', border: '1px solid #1e1e2e', borderRadius: 8, color: '#e2e8f0' }}>
+      <div
+        onClick={() => setOpen(o => !o)}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', cursor: 'pointer', userSelect: 'none' }}
+      >
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+          <h2 style={{ margin: 0, fontSize: 20 }}>ETF Correlations</h2>
+          {age && <span style={{ fontSize: '0.72rem', color: '#3a3a52' }}>as of {age}</span>}
+        </div>
+        <span style={{ fontSize: '0.65rem', color: '#64748b', display: 'inline-block', transition: 'transform 0.2s', transform: open ? 'rotate(90deg)' : 'none' }}>▶</span>
+      </div>
+      {open && (
+        <div style={{ padding: '0 18px 18px' }}>
+          <div className="etf-scroll">
+            <table className="etf-table">
               <thead>
-                <tr style={{textAlign:'left', color: '#57606a', fontSize: 13, position:'sticky', top:0, background:'#f6f8fa', zIndex:1}}>
-                  <th style={{padding:'10px 12px', borderBottom:'2px solid #d8dee4', whiteSpace:'nowrap'}}>Ticker</th>
-                  <th style={{padding:'10px 12px', borderBottom:'2px solid #d8dee4'}}>ETF</th>
-                  <th style={{padding:'10px 12px', borderBottom:'2px solid #d8dee4', textAlign:'right', whiteSpace:'nowrap'}}>Correlation</th>
-                  <th style={{padding:'10px 12px', borderBottom:'2px solid #d8dee4', textAlign:'right', whiteSpace:'nowrap'}}>1m Return</th>
-                  <th style={{padding:'10px 12px', borderBottom:'2px solid #d8dee4', textAlign:'right', whiteSpace:'nowrap'}}>Days</th>
+                <tr>
+                  <th>Ticker</th><th>ETF</th>
+                  <th>Correlation</th><th>1m Return</th><th>Days</th>
                 </tr>
               </thead>
               <tbody>
-                {lowCorrelationEtfs.map((item, i) => (
-                  <tr key={item.symbol} style={{borderBottom:'1px solid #f0f0f0', background: i % 2 === 0 ? '#fff' : '#fafafa'}}>
-                    <td style={{padding:'10px 12px', fontWeight:700, whiteSpace:'nowrap'}}>{item.ticker}</td>
-                    <td style={{padding:'10px 12px', color:'#24292f'}}>{item.name}</td>
-                    <td style={{padding:'10px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums', ...returnStyle(item.correlation != null ? -item.correlation : null)}}>{fmt(item.correlation)}</td>
-                    <td style={{padding:'10px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums', ...returnStyle(item.oneMonthReturn)}}>{pct(item.oneMonthReturn)}</td>
-                    <td style={{padding:'10px 12px', textAlign:'right', color:'#57606a'}}>{item.observations}</td>
+                {etfs.map((item, i) => (
+                  <tr key={item.symbol} className={i % 2 === 0 ? 'row-even' : 'row-odd'}>
+                    <td style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{item.ticker}</td>
+                    <td>{item.name}</td>
+                    <td className="num" style={returnStyle(item.correlation != null ? -item.correlation : null)}>{fmt(item.correlation)}</td>
+                    <td className="num" style={returnStyle(item.oneMonthReturn)}>{pct(item.oneMonthReturn)}</td>
+                    <td className="num muted">{item.observations}</td>
                   </tr>
                 ))}
               </tbody>
@@ -199,46 +481,42 @@ export default function StocksPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
 
-      {cot?.signals?.length > 0 && (
-        <div style={{marginBottom: 24, background:'#fff', border:'1px solid #d8dee4', borderRadius:8, padding: 18}}>
-          <h2 style={{marginTop:0, marginBottom: 4}}>COT Weekly Movers</h2>
-          <p style={{marginTop:0, marginBottom:14, fontSize:13, color:'#57606a'}}>Managed money ratio shifts ≥ 0.035 — last updated {cot.last_updated}</p>
-          <div style={{overflowX:'auto'}}>
-            <table style={{width:'100%', minWidth:580, borderCollapse:'collapse'}}>
-              <thead>
-                <tr style={{textAlign:'left', borderBottom:'2px solid #d8dee4', color:'#57606a', fontSize:13, background:'#f6f8fa'}}>
-                  <th style={{padding:'10px 12px'}}>Market</th>
-                  <th style={{padding:'10px 12px'}}>Category</th>
-                  <th style={{padding:'10px 12px', textAlign:'right'}}>Prev</th>
-                  <th style={{padding:'10px 12px', textAlign:'right'}}>Now</th>
-                  <th style={{padding:'10px 12px', textAlign:'right'}}>Shift</th>
-                  <th style={{padding:'10px 12px', textAlign:'right'}}>Long / Short</th>
-                </tr>
-              </thead>
-              <tbody>
-                {cot.signals.map((s, i) => {
-                  const up = s.delta > 0;
-                  const colour = up ? '#1a7f37' : '#d1242f';
-                  const arrow = up ? '▲' : '▼';
-                  return (
-                    <tr key={i} style={{borderBottom:'1px solid #f0f0f0', background: i % 2 === 0 ? '#fff' : '#fafafa'}}>
-                      <td style={{padding:'10px 12px', fontWeight:600}}>{s.market}</td>
-                      <td style={{padding:'10px 12px', color:'#57606a', fontSize:13}}>{s.category}</td>
-                      <td style={{padding:'10px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums'}}>{s.ratio_prev.toFixed(2)}</td>
-                      <td style={{padding:'10px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums', color:colour, fontWeight:700}}>{arrow} {s.ratio_now.toFixed(2)}</td>
-                      <td style={{padding:'10px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums', color:colour, fontWeight:700}}>{s.delta > 0 ? '+' : ''}{s.delta.toFixed(3)}</td>
-                      <td style={{padding:'10px 12px', textAlign:'right', fontVariantNumeric:'tabular-nums', color:'#57606a'}}>{s.long.toLocaleString()} / {s.short.toLocaleString()}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+function TickerChart({ priceSeries, tickers, perTicker }) {
+  const [selected, setSelected] = useState(tickers[0]);
+  const [open, setOpen] = useState(false);
+  const points = priceSeries[selected] || [];
+  const avgPrice = perTicker[selected]?.avgPrice ?? null;
+
+  return (
+    <div style={{ marginBottom: 24, background: '#111118', border: '1px solid #1e1e2e', borderRadius: 8, color: '#e2e8f0' }}>
+      <div
+        onClick={() => setOpen(o => !o)}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', cursor: 'pointer', userSelect: 'none' }}
+      >
+        <h2 style={{ margin: 0, fontSize: 20 }}>Single Asset Viewer</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {open && (
+            <select
+              value={selected}
+              onClick={e => e.stopPropagation()}
+              onChange={e => setSelected(e.target.value)}
+              style={{ background: '#16161f', border: '1px solid #2a2a3d', color: '#e2e8f0', borderRadius: 6, padding: '6px 10px', fontSize: '0.85rem', cursor: 'pointer' }}
+            >
+              {tickers.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          )}
+          <span style={{ fontSize: '0.65rem', color: '#64748b', transition: 'transform 0.2s', display: 'inline-block', transform: open ? 'rotate(90deg)' : 'none' }}>▶</span>
+        </div>
+      </div>
+      {open && (
+        <div style={{ padding: '0 18px 18px' }}>
+          <LineChart key={selected} points={points} height={320} title="" avgPrice={avgPrice} />
         </div>
       )}
-
-      <div style={{marginTop:12, fontSize:12, color:'#666'}}>Last updated: {new Date(loaded_at).toLocaleString()}</div>
     </div>
   );
 }
