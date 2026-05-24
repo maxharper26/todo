@@ -76,14 +76,30 @@ export default function StocksPage() {
   const [tradeSubmitting, setTradeSubmitting] = useState(false);
   const [tradeError, setTradeError] = useState(null);
 
-  async function load() {
+  const CACHE_KEY = 'stocks_cache';
+  const CACHE_TTL = 30 * 60 * 1000;
+
+  async function load(force = false) {
+    // Check local cache first
+    if (!force) {
+      try {
+        const cached = JSON.parse(localStorage.getItem(CACHE_KEY));
+        if (cached && Date.now() - cached.ts < CACHE_TTL) {
+          setData(cached.data);
+          setLoading(false);
+          return;
+        }
+      } catch {}
+    }
     setLoading(true);
     setError(null);
     setEtfData(null);
     try {
       const res = await fetch('/api/stocks');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setData(await res.json());
+      const json = await res.json();
+      setData(json);
+      try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: json })); } catch {}
     } catch (err) {
       setError(err.message || 'Failed to load stock data.');
     } finally {
@@ -127,7 +143,7 @@ export default function StocksPage() {
       }
       setTradeModal(false);
       setTradeForm(TRADE_FORM_DEFAULT);
-      load();
+      load(true);
     } catch (err) {
       setTradeError(err.message);
     } finally {
@@ -340,7 +356,7 @@ export default function StocksPage() {
 
       <PnlContributions tickers={tickers} perTicker={perTicker} allocations={allocations} />
 
-      <TradeHistory onDelete={load} />
+      <TradeHistory onDelete={() => load(true)} />
 
       <div className="last-updated">Last updated: {new Date(loaded_at).toLocaleString()}</div>
     </div>

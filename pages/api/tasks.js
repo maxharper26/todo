@@ -31,7 +31,14 @@ export default async function handler(req, res) {
 
   if (req.method === 'GET') {
     const data = await getTasks();
-    return res.status(200).json(data);
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const pruned = data.tasks.filter(t =>
+      t.status !== 'closed' || new Date(t.updated_at).getTime() > cutoff
+    );
+    if (pruned.length !== data.tasks.length) {
+      await saveTasks({ tasks: pruned });
+    }
+    return res.status(200).json({ tasks: pruned });
   }
 
   if (req.method === 'PUT') {

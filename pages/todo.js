@@ -45,14 +45,31 @@ export default function TodoPage() {
     return () => document.removeEventListener('keydown', handler);
   }, [modalOpen, form, editingTask]);
 
-  async function loadTasks() {
+  const CACHE_KEY = 'tasks_cache';
+  const CACHE_TTL = 5 * 60 * 1000;
+
+  async function loadTasks(force = false) {
+    if (!force) {
+      try {
+        const cached = JSON.parse(localStorage.getItem(CACHE_KEY));
+        if (cached && Date.now() - cached.ts < CACHE_TTL) {
+          setTasks(cached.data);
+          setLastLoaded(new Date(cached.ts).toLocaleTimeString('en-AU'));
+          return;
+        }
+      } catch {}
+    }
     const res = await fetch('/api/tasks');
     const data = await res.json();
-    setTasks(data.tasks || []);
+    const tasks = data.tasks || [];
+    setTasks(tasks);
     setLastLoaded(new Date().toLocaleTimeString('en-AU'));
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: tasks })); } catch {}
   }
 
   async function saveTasks(updated) {
+    setTasks(updated);
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: updated })); } catch {}
     await fetch('/api/tasks', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -156,7 +173,7 @@ export default function TodoPage() {
             <span className={!workOnly ? 'active' : ''}>All</span>
             <span className={workOnly ? 'active' : ''}>Work</span>
           </div>
-          <button className="btn btn-ghost" onClick={loadTasks}>↻ Refresh</button>
+          <button className="btn btn-ghost" onClick={() => loadTasks(true)}>↻ Refresh</button>
           <button className="btn btn-primary" onClick={openAddModal}>+ Add task</button>
           <Link href="/stocks" style={{ padding: '6px 12px', borderRadius: 6, background: '#6366f1', border: '1px solid #6366f1', color: '#fff', textDecoration: 'none', fontSize: '0.82rem', fontWeight: 500 }}>Stocks</Link>
         </div>
