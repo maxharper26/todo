@@ -93,22 +93,22 @@ export default function LineChart({ points, comparatorPoints, comparatorLabel = 
 
   return (
     <div style={{ marginBottom: 24, background: '#111118', border: '1px solid #1e1e2e', borderRadius: 8, padding: 18, color: '#e2e8f0' }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 16, marginBottom: 12 }}>
-        <h2 style={{ margin: 0, fontSize: 20 }}>{title}</h2>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+        <h2 style={{ margin: 0, fontSize: 20, flexShrink: 0 }}>{title}</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           {hasComparator && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#64748b' }}>
-              <svg width="20" height="3"><line x1="0" y1="1.5" x2="20" y2="1.5" stroke="#64748b" strokeWidth="2" strokeDasharray="4 3" /></svg>
-              {comparatorLabel}
-              {activeComp && <strong style={{ color: '#94a3b8', marginLeft: 4 }}>{formatValue(activeComp.value)}</strong>}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#64748b', minWidth: 0 }}>
+              <svg width="20" height="3" style={{ flexShrink: 0 }}><line x1="0" y1="1.5" x2="20" y2="1.5" stroke="#64748b" strokeWidth="2" strokeDasharray="4 3" /></svg>
+              <span style={{ whiteSpace: 'nowrap' }}>{comparatorLabel}</span>
+              {activeComp && <strong style={{ color: '#94a3b8', marginLeft: 4, whiteSpace: 'nowrap' }}>{formatValue(activeComp.value)}</strong>}
             </div>
           )}
           {active && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#64748b' }}>
-              <svg width="20" height="3"><line x1="0" y1="1.5" x2="20" y2="1.5" stroke={color} strokeWidth="3" /></svg>
-              Portfolio
-              <strong style={{ color, marginLeft: 4 }}>{formatValue(active.value)}</strong>
-              <span style={{ marginLeft: 4 }}>{formatDate(active.date)}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#64748b', minWidth: 0 }}>
+              <svg width="20" height="3" style={{ flexShrink: 0 }}><line x1="0" y1="1.5" x2="20" y2="1.5" stroke={color} strokeWidth="3" /></svg>
+              <span style={{ whiteSpace: 'nowrap' }}>Portfolio</span>
+              <strong style={{ color, marginLeft: 4, whiteSpace: 'nowrap' }}>{formatValue(active.value)}</strong>
+              <span style={{ marginLeft: 4, whiteSpace: 'nowrap' }}>{formatDate(active.date)}</span>
             </div>
           )}
         </div>

@@ -5,7 +5,7 @@ export default function Home() {
 export function getServerSideProps() {
   return {
     redirect: {
-      destination: '/stocks',
+      destination: '/todo',
       permanent: false,
     },
   };

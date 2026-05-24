@@ -80,7 +80,7 @@ export default function PieChart({ allocations, sectorAllocations, size = 520 })
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 1fr) minmax(180px, 0.7fr)', gap: 18, alignItems: 'center' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(140px, 0.6fr)', gap: 18, alignItems: 'center' }}>
         <svg
           viewBox={`0 0 ${size} ${size}`}
           width="100%"
