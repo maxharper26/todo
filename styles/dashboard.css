@@ -329,13 +329,14 @@ textarea { resize: vertical; min-height: 72px; }
 .trade-field-group { margin-bottom: 12px; }
 .trade-error { color: var(--red); font-size: 0.82rem; margin: 8px 0; }
 .last-updated { margin-top: 12px; font-size: 12px; color: var(--text-muted); }
+main { padding-bottom: env(safe-area-inset-bottom); }
 
 /* ── Nav bar ─────────────────────────────────────────────── */
 .app-nav {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 14px 20px;
+  padding: calc(max(14px, env(safe-area-inset-top)) + 8px) max(20px, env(safe-area-inset-right)) 14px max(20px, env(safe-area-inset-left));
   background: var(--bg);
   border-bottom: 1px solid var(--border);
   position: sticky;
@@ -372,6 +373,8 @@ textarea { resize: vertical; min-height: 72px; }
   background: #1a1a2e;
 }
 .nrl-match-title { font-size: 1rem; font-weight: 700; color: var(--text); }
+.nrl-match-title a { color: inherit; text-decoration: none; }
+.nrl-match-title a:hover { text-decoration: underline; text-underline-offset: 3px; }
 .nrl-vs { color: var(--text-muted); font-weight: 400; font-size: 0.85rem; margin: 0 6px; }
 .nrl-kickoff { font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; }
 .nrl-teams-grid { display: grid; grid-template-columns: 1fr 1fr; }

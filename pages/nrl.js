@@ -5,13 +5,33 @@ export default function NrlPage() {
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(null);
 
-  useEffect(() => {
+  const CACHE_KEY = 'nrl_cache';
+  const CACHE_TTL = 24 * 60 * 60 * 1000; // 1 day
+
+  function load(force = false) {
+    if (!force) {
+      try {
+        const cached = JSON.parse(localStorage.getItem(CACHE_KEY));
+        if (cached && Date.now() - cached.ts < CACHE_TTL) {
+          setRoundObj(cached.data);
+          setLoading(false);
+          return;
+        }
+      } catch {}
+    }
+    setLoading(true);
+    setError(null);
     fetch('/api/nrl')
       .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      .then(setRoundObj)
+      .then(data => {
+        setRoundObj(data);
+        try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data })); } catch {}
+      })
       .catch(err => setError(err.message))
       .finally(() => setLoading(false));
-  }, []);
+  }
+
+  useEffect(() => { load(); }, []);
 
   if (loading) return <div className="nrl-page"><p className="nrl-muted">Loading NRL data…</p></div>;
   if (error)   return <div className="nrl-page"><p className="nrl-error">Error: {error}</p></div>;
@@ -22,10 +42,13 @@ export default function NrlPage() {
     <div className="nrl-page">
       <div className="page-header">
         <h1>NRL Ins &amp; Outs</h1>
-        <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{roundObj.title}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{roundObj.title}</span>
+          <button className="btn btn-ghost" onClick={() => load(true)}>↻ Refresh</button>
+        </div>
       </div>
 
-      {roundObj.matches.map((match, i) => <MatchCard key={i} match={match} />)}
+      {roundObj.matches.map((match, i) => <MatchCard key={i} match={match} sourceUrl={roundObj.source_url} />)}
 
       {roundObj.scraped_at && (
         <p className="last-updated">Scraped: {new Date(roundObj.scraped_at).toLocaleString('en-AU')}</p>
@@ -70,12 +93,18 @@ function TeamPanel({ name, squad, accentColour }) {
   );
 }
 
-function MatchCard({ match }) {
+function MatchCard({ match, sourceUrl }) {
+  const href = match.url
+    ? (match.url.startsWith('http') ? match.url : `https://www.nrl.com${match.url}`)
+    : sourceUrl;
   return (
     <div className="nrl-match">
       <div className="nrl-match-header">
         <span className="nrl-match-title">
-          {match.home} <span className="nrl-vs">vs</span> {match.away}
+          {href
+            ? <a href={href} target="_blank" rel="noopener noreferrer">{match.home} <span className="nrl-vs">vs</span> {match.away}</a>
+            : <>{match.home} <span className="nrl-vs">vs</span> {match.away}</>
+          }
         </span>
         {match.kickoff && <span className="nrl-kickoff">{match.kickoff}</span>}
       </div>
