@@ -199,7 +199,7 @@ export default function StocksPage() {
         <h1>Stocks</h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button className="btn btn-primary" onClick={() => { setTradeModal(true); setTradeError(null); }}>+ Add trade</button>
-          <Link href="/todo" style={{ padding: '6px 12px', borderRadius: 6, background: '#6366f1', border: '1px solid #6366f1', color: '#fff', textDecoration: 'none', fontSize: '0.82rem', fontWeight: 500 }}>Todo</Link>
+
         </div>
       </div>
 

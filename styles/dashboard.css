@@ -329,3 +329,73 @@ textarea { resize: vertical; min-height: 72px; }
 .trade-field-group { margin-bottom: 12px; }
 .trade-error { color: var(--red); font-size: 0.82rem; margin: 8px 0; }
 .last-updated { margin-top: 12px; font-size: 12px; color: var(--text-muted); }
+
+/* ── Nav bar ─────────────────────────────────────────────── */
+.app-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 20px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.nav-link {
+  padding: 7px 16px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-decoration: none;
+  border: 1px solid var(--border);
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.nav-link:hover { border-color: var(--border-2); color: var(--text); }
+.nav-link-active { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+
+/* ── NRL page ────────────────────────────────────────────── */
+.nrl-page { padding: 20px 24px; }
+.nrl-match {
+  margin-bottom: 20px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.nrl-match-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  background: #1a1a2e;
+}
+.nrl-match-title { font-size: 1rem; font-weight: 700; color: var(--text); }
+.nrl-vs { color: var(--text-muted); font-weight: 400; font-size: 0.85rem; margin: 0 6px; }
+.nrl-kickoff { font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; }
+.nrl-teams-grid { display: grid; grid-template-columns: 1fr 1fr; }
+.nrl-team { padding: 14px 16px; background: var(--surface-2); }
+.nrl-team:first-child { border-right: 1px solid var(--border); }
+.nrl-team-name { font-size: 0.9rem; font-weight: 700; color: var(--text); }
+.nrl-player-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.nrl-player-list li {
+  padding: 5px 10px;
+  margin: 3px 0;
+  background: var(--surface);
+  border-radius: 4px;
+  font-size: 0.83rem;
+  color: var(--text);
+}
+.nrl-muted { color: var(--text-muted); }
+.nrl-error { color: var(--red); }
+@media (max-width: 600px) {
+  .nrl-page { padding: 12px; }
+  .nrl-match-header { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .nrl-teams-grid { grid-template-columns: 1fr; }
+  .nrl-team:first-child { border-right: none; border-bottom: 1px solid var(--border); }
+}

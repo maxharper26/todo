@@ -175,7 +175,7 @@ export default function TodoPage() {
           </div>
           <button className="btn btn-ghost" onClick={() => loadTasks(true)}>↻ Refresh</button>
           <button className="btn btn-primary" onClick={openAddModal}>+ Add task</button>
-          <Link href="/stocks" style={{ padding: '6px 12px', borderRadius: 6, background: '#6366f1', border: '1px solid #6366f1', color: '#fff', textDecoration: 'none', fontSize: '0.82rem', fontWeight: 500 }}>Stocks</Link>
+
         </div>
       </div>
 
