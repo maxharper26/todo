@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AreaChart, Heatmap, LineChart, PieChart } from '../components/charts';
 
 function pct(n) {
@@ -63,11 +63,15 @@ const SECTORS = [
   'Real Estate', 'Crypto', 'Alternatives',
 ];
 
+const CACHE_KEY = 'stocks_cache';
+const CACHE_TTL = 30 * 60 * 1000;
+
 const TRADE_FORM_DEFAULT = { ticker: '', date: new Date().toISOString().slice(0, 10), price: '', units: '', action: 'buy', sector: '' };
 
 export default function StocksPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false); // soft refresh — keeps existing data visible
   const [error, setError] = useState(null);
   const [etfData, setEtfData] = useState(null);
   const [etfLoading, setEtfLoading] = useState(false);
@@ -75,12 +79,9 @@ export default function StocksPage() {
   const [tradeForm, setTradeForm] = useState(TRADE_FORM_DEFAULT);
   const [tradeSubmitting, setTradeSubmitting] = useState(false);
   const [tradeError, setTradeError] = useState(null);
-
-  const CACHE_KEY = 'stocks_cache';
-  const CACHE_TTL = 30 * 60 * 1000;
+  const etfLoadedRef = useRef(false);
 
   async function load(force = false) {
-    // Check local cache first
     if (!force) {
       try {
         const cached = JSON.parse(localStorage.getItem(CACHE_KEY));
@@ -91,9 +92,15 @@ export default function StocksPage() {
         }
       } catch {}
     }
-    setLoading(true);
+
+    // If we already have data, do a soft refresh (no full-page loading state)
+    if (force && data) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
     setError(null);
-    setEtfData(null);
+
     try {
       const res = await fetch('/api/stocks');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -104,6 +111,7 @@ export default function StocksPage() {
       setError(err.message || 'Failed to load stock data.');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }
 
@@ -113,6 +121,7 @@ export default function StocksPage() {
       const res = await fetch('/api/etf-correlations');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setEtfData(await res.json());
+      etfLoadedRef.current = true;
     } catch (err) {
       console.warn('ETF correlations failed:', err.message);
     } finally {
@@ -120,8 +129,11 @@ export default function StocksPage() {
     }
   }
 
-  useEffect(() => { load(); }, []);
-  useEffect(() => { if (data) loadEtfs(); }, [data]);
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Only load ETFs once on initial data load, not on every refresh
+  useEffect(() => {
+    if (data && !etfLoadedRef.current) loadEtfs();
+  }, [data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function submitTrade() {
     const { ticker, date, price, units, action } = tradeForm;
@@ -143,7 +155,7 @@ export default function StocksPage() {
       }
       setTradeModal(false);
       setTradeForm(TRADE_FORM_DEFAULT);
-      load(true);
+      await load(true); // await so refreshing state is accurate
     } catch (err) {
       setTradeError(err.message);
     } finally {
@@ -199,9 +211,13 @@ export default function StocksPage() {
         <h1>Stocks</h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button className="btn btn-primary" onClick={() => { setTradeModal(true); setTradeError(null); }}>+ Add trade</button>
-
         </div>
       </div>
+
+      {/* Soft-refresh indicator */}
+      {refreshing && (
+        <div style={{ marginBottom: 12, fontSize: '0.78rem', color: '#64748b' }}>Refreshing…</div>
+      )}
 
       {/* Trade modal */}
       {tradeModal && (
@@ -238,7 +254,6 @@ export default function StocksPage() {
                     const val = e.target.value;
                     setTradeForm(f => {
                       const update = { ...f, [key]: val };
-                      // Auto-fill sector from existing holding when ticker is entered
                       if (key === 'ticker' && !f.sector) {
                         const match = allocations?.find(a => a.ticker?.toUpperCase() === val.toUpperCase().replace(/\.AX$/i, '') || a.symbol?.toUpperCase() === val.toUpperCase());
                         if (match?.sector) update.sector = match.sector;
@@ -280,8 +295,6 @@ export default function StocksPage() {
       {/* Summary stats */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
         {[
-          // { label: 'Market Value',  value: portfolio?.current_value != null ? `${fmt(portfolio.current_value)}` : '—' },
-          // { label: 'Cost Basis',    value: portfolio?.total_cost    != null ? `${fmt(portfolio.total_cost)}`    : '—' },
           { label: 'P&L',          value: portfolio?.current_value != null && portfolio?.total_cost != null
             ? `${fmt(portfolio.current_value - portfolio.total_cost)}`
             : '—',

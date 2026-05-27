@@ -23,11 +23,9 @@ body {
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
-  padding: 24px;
+  /* No padding here — pages handle their own padding */
 }
 @media (max-width: 600px) {
-  body { padding: 12px; }
-  .stocks-page { padding: 12px; }
   .modal { padding: 16px; }
   .form-row { grid-template-columns: 1fr; }
 }
@@ -238,6 +236,8 @@ body {
   padding: 24px;
   width: 480px;
   max-width: 95vw;
+  max-height: 90vh;
+  overflow-y: auto;
   box-shadow: 0 8px 40px rgba(0,0,0,.6);
 }
 .modal h2 { font-size: 1rem; font-weight: 600; margin-bottom: 16px; color: var(--text); }
@@ -259,7 +259,8 @@ select {
   border: 1px solid var(--border-2);
   border-radius: 6px;
   padding: 8px 10px;
-  font-size: 0.85rem;
+  /* 16px minimum prevents iOS auto-zoom on focus */
+  font-size: 16px;
   font-family: inherit;
   background: var(--surface-2);
   color: var(--text);
@@ -287,7 +288,16 @@ textarea { resize: vertical; min-height: 72px; }
 .page-footer { margin-top: 20px; font-size: 0.72rem; color: var(--text-muted); text-align: right; }
 
 /* ─── Stocks Page ───────────────────────────────────────────────── */
-.stocks-page { padding: 20px; max-width: 1280px; margin: 0 auto; }
+.stocks-page {
+  padding: 20px max(20px, env(safe-area-inset-right)) 20px max(20px, env(safe-area-inset-left));
+  max-width: 1280px;
+  margin: 0 auto;
+}
+@media (max-width: 600px) {
+  .stocks-page {
+    padding: 12px max(12px, env(safe-area-inset-right)) 12px max(12px, env(safe-area-inset-left));
+  }
+}
 .stocks-page h1 { margin: 0; }
 .stocks-loading { padding: 20px; }
 .stocks-error { color: var(--red); }
@@ -296,12 +306,12 @@ textarea { resize: vertical; min-height: 72px; }
 
 .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 18px; margin-bottom: 24px; }
 .panel h2 { margin: 0 0 14px; font-size: 1rem; font-weight: 600; }
-.panel-scroll { overflow-x: auto; }
+.panel-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
 .chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 500px), 1fr)); gap: 24px; margin-bottom: 24px; }
 
 /* Returns table */
-.returns-table { width: 100%; min-width: 1020px; border-collapse: collapse; }
+.returns-table { width: 100%; min-width: 680px; border-collapse: collapse; }
 .returns-table thead tr { text-align: left; border-bottom: 1px solid var(--border); color: var(--text-muted); font-size: 13px; }
 .returns-table th { padding: 11px 8px; font-weight: 500; }
 .returns-table th:not(:first-child) { text-align: right; }
@@ -312,7 +322,7 @@ textarea { resize: vertical; min-height: 72px; }
 .returns-table td.num { font-variant-numeric: tabular-nums; }
 
 /* ETF correlation table */
-.etf-scroll { overflow-x: auto; overflow-y: auto; max-height: 480px; border-radius: 6px; border: 1px solid var(--border); }
+.etf-scroll { overflow-x: auto; overflow-y: auto; -webkit-overflow-scrolling: touch; max-height: 480px; border-radius: 6px; border: 1px solid var(--border); }
 .etf-table { width: 100%; min-width: 600px; border-collapse: collapse; }
 .etf-table thead tr { text-align: left; color: var(--text-muted); font-size: 13px; position: sticky; top: 0; background: var(--surface-2); z-index: 1; }
 .etf-table th { padding: 10px 12px; border-bottom: 2px solid var(--border); font-weight: 500; }

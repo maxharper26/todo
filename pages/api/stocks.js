@@ -18,10 +18,13 @@ export default async function handler(req, res) {
   try {
     // ── Load trades ──────────────────────────────────────────────
     const trades = await loadTrades();
-    const tickers = getOpenTickers(trades);
-    if (!tickers.length) {
+    const openTickers = getOpenTickers(trades);
+    if (!openTickers.length) {
       return res.status(200).json({ tickers: [], perTicker: {}, portfolio: {}, allocations: [], sectorAllocations: [] });
     }
+
+    // All tickers ever traded — needed for accurate TWR across closed positions
+    const allHistoricalTickers = Array.from(new Set(trades.map(t => t.Ticker)));
 
     // ── Fetch price history ──────────────────────────────────────
     let earliest = null;
@@ -33,18 +36,29 @@ export default async function handler(req, res) {
       : new Date(Date.now() - 365 * 24 * 3600 * 1000);
     const end = new Date();
 
-    const { histByTicker, allDates } = await fetchPriceHistory(tickers, start, end);
+    // Fetch prices for all historical tickers so TWR can account for closed positions
+    const { histByTicker, allDates } = await fetchPriceHistory(allHistoricalTickers, start, end);
     if (!allDates.length) {
       return res.status(500).json({ error: 'No price history returned for tickers.' });
     }
-    const priceByTicker = alignPrices(tickers, histByTicker, allDates);
+
+    // allPriceByTicker: used for TWR (needs closed positions too)
+    // openPriceByTicker: used for display metrics (open positions only)
+    const allPriceByTicker = alignPrices(allHistoricalTickers, histByTicker, allDates);
+    const openPriceByTicker = Object.fromEntries(openTickers.map(t => [t, allPriceByTicker[t]]));
 
     // ── Positions ────────────────────────────────────────────────
-    const { perTicker, allocations, usdToAudRate } = await buildPositions(tickers, trades, priceByTicker, allDates);
-    const total_cost = trades.reduce((sum, t) => {
-      const nativeCost = t.Price * t.Units;
-      return sum + (USD_ALLOCATION_TICKERS.has(t.Ticker) ? nativeCost * usdToAudRate : nativeCost);
+    const { perTicker, allocations, usdToAudRate } = await buildPositions(openTickers, trades, openPriceByTicker, allDates);
+
+    // Cost basis for open positions only: avgPrice * openUnits per ticker.
+    // Using all-buy-trades total would inflate cost by including already-sold shares.
+    const total_cost = openTickers.reduce((sum, ticker) => {
+      const { avgPrice, units } = perTicker[ticker];
+      if (!avgPrice || !units) return sum;
+      const nativeCost = avgPrice * units;
+      return sum + (USD_ALLOCATION_TICKERS.has(ticker) ? nativeCost * usdToAudRate : nativeCost);
     }, 0);
+
     const current_value = allocations.reduce((sum, a) => sum + a.positionValue, 0);
     const portfolio_return = total_cost ? (current_value - total_cost) / total_cost : null;
     const weightedAllocations = allocations
@@ -53,9 +67,9 @@ export default async function handler(req, res) {
 
     // ── Correlation matrix ───────────────────────────────────────
     const correlationMatrix = {};
-    for (const a of tickers) {
+    for (const a of openTickers) {
       correlationMatrix[a] = {};
-      for (const b of tickers) {
+      for (const b of openTickers) {
         const aRets = perTicker[a].returns;
         const bRets = perTicker[b].returns;
         correlationMatrix[a][b] = correlation(aRets, bRets);
@@ -65,8 +79,8 @@ export default async function handler(req, res) {
     // ── Benchmark (VGS.AX) ───────────────────────────────────────
     const { benchmarkTwrSeries, benchmarkDrawdownSeries } = await buildBenchmark(start, end, allDates, calculateDrawdown);
 
-    // ── TWR ──────────────────────────────────────────────────────
-    const twrData = calculateTWR(trades, priceByTicker, allDates);
+    // ── TWR — uses allPriceByTicker so closed positions contribute correctly ──
+    const twrData = calculateTWR(trades, allPriceByTicker, allDates);
     const portfolioReturnPoints = twrData.values.map((value, idx, arr) => {
       if (idx === 0) return null;
       return { date: allDates[idx], value: pctChange(value, arr[idx - 1]) };
@@ -80,8 +94,8 @@ export default async function handler(req, res) {
 
     // ── Standardized returns ─────────────────────────────────────
     const standardizedReturns = {};
-    for (const ticker of tickers) {
-      standardizedReturns[ticker] = calculateStandardizedReturns(priceByTicker[ticker], {
+    for (const ticker of openTickers) {
+      standardizedReturns[ticker] = calculateStandardizedReturns(openPriceByTicker[ticker], {
         useLatestNonZeroOneDay: ticker === 'DXYZ',
       });
     }
@@ -91,27 +105,27 @@ export default async function handler(req, res) {
     const vgsReturnsMap = buildVgsReturnsMap(benchmarkTwrSeries);
     const portfolioBeta = calcBeta(portfolioReturnPoints, vgsReturnsMap);
     const tickerBetas = {};
-    for (const ticker of tickers) {
-      tickerBetas[ticker] = calcBeta(buildTickerReturnPoints(ticker, priceByTicker, allDates), vgsReturnsMap);
+    for (const ticker of openTickers) {
+      tickerBetas[ticker] = calcBeta(buildTickerReturnPoints(ticker, openPriceByTicker, allDates), vgsReturnsMap);
     }
 
     // ── Build display-safe response objects ──────────────────────
-    const displayTickers = tickers.map(displayTicker);
+    const displayTickers = openTickers.map(displayTicker);
     const displayPerTicker = {};
     const displayStandardizedReturns = { Portfolio: standardizedReturns.Portfolio };
     const displayCorrelationMatrix = {};
 
-    for (const ticker of tickers) {
+    for (const ticker of openTickers) {
       const label = displayTicker(ticker);
       displayPerTicker[label] = { ...perTicker[ticker], ticker: label, symbol: ticker, beta: tickerBetas[ticker] ?? null };
       displayStandardizedReturns[label] = standardizedReturns[ticker];
       displayCorrelationMatrix[label] = {};
-      for (const other of tickers) {
+      for (const other of openTickers) {
         displayCorrelationMatrix[label][displayTicker(other)] = correlationMatrix[ticker][other];
       }
     }
 
-    const priceSeries = buildPriceSeries(tickers, priceByTicker, allDates);
+    const priceSeries = buildPriceSeries(openTickers, openPriceByTicker, allDates);
 
     // ── Sector allocations ───────────────────────────────────────
     const sectorMap = {};

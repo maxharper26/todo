@@ -10,10 +10,12 @@ export default async function handler(req, res) {
 
   try {
     const trades = await loadTrades();
-    const tickers = getOpenTickers(trades);
-    if (!tickers.length) {
+    const openTickers = getOpenTickers(trades);
+    if (!openTickers.length) {
       return res.status(200).json({ lowCorrelationEtfs: [], etfUpdatedAt: null });
     }
+
+    const allHistoricalTickers = Array.from(new Set(trades.map(t => t.Ticker)));
 
     let earliest = null;
     for (const t of trades) {
@@ -24,20 +26,22 @@ export default async function handler(req, res) {
       : new Date(Date.now() - 365 * 24 * 3600 * 1000);
     const end = new Date();
 
-    // Need TWR return points to compute correlations against portfolio
-    const { histByTicker, allDates } = await fetchPriceHistory(tickers, start, end);
+    const { histByTicker, allDates } = await fetchPriceHistory(allHistoricalTickers, start, end);
     if (!allDates.length) return res.status(200).json({ lowCorrelationEtfs: [], etfUpdatedAt: null });
 
-    const priceByTicker = alignPrices(tickers, histByTicker, allDates);
-    const { usdToAudRate } = await buildPositions(tickers, trades, priceByTicker, allDates);
-    const twrData = calculateTWR(trades, priceByTicker, allDates);
+    // allPriceByTicker for TWR (includes closed positions), openPriceByTicker for buildPositions
+    const allPriceByTicker = alignPrices(allHistoricalTickers, histByTicker, allDates);
+    const openPriceByTicker = Object.fromEntries(openTickers.map(t => [t, allPriceByTicker[t]]));
+
+    const { usdToAudRate } = await buildPositions(openTickers, trades, openPriceByTicker, allDates);
+    const twrData = calculateTWR(trades, allPriceByTicker, allDates);
     const portfolioReturnPoints = twrData.values.map((value, idx, arr) => {
       if (idx === 0) return null;
       return { date: allDates[idx], value: pctChange(value, arr[idx - 1]) };
     }).slice(1).filter(p => p && typeof p.value === 'number' && !isNaN(p.value));
 
     const hash = etfListHash();
-    const cacheKey = `${hash}:${tickers.join(',')}`;
+    const cacheKey = `${hash}:${openTickers.join(',')}`;
     const { data: lowCorrelationEtfs, updatedAt: etfUpdatedAt } = await getLowCorrelationEtfs(
       portfolioReturnPoints.slice(-252),
       cacheKey
