@@ -33,13 +33,13 @@ export default function NrlPage() {
 
   useEffect(() => { load(); }, []);
 
-  if (loading) return <div className="nrl-page"><p className="nrl-muted">Loading NRL data…</p></div>;
-  if (error)   return <div className="nrl-page"><p className="nrl-error">Error: {error}</p></div>;
+  if (loading) return <div className="page"><p className="nrl-muted">Loading NRL data…</p></div>;
+  if (error)   return <div className="page"><p className="nrl-error">Error: {error}</p></div>;
   if (!roundObj?.matches?.length)
-    return <div className="nrl-page"><p className="nrl-muted">No round data found.</p></div>;
+    return <div className="page"><p className="nrl-muted">No round data found.</p></div>;
 
   return (
-    <div className="nrl-page">
+    <div className="page">
       <div className="page-header">
         <h1>NRL Ins &amp; Outs</h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

@@ -204,7 +204,10 @@ export default function StocksPage() {
   };
 
   return (
-    <div className="stocks-page">
+    <div className="page">
+
+      {/* Ticker tape */}
+      {standardizedReturns && <TickerTape tickers={tickers} standardizedReturns={standardizedReturns} />}
 
       {/* Header */}
       <div className="page-header">
@@ -419,6 +422,33 @@ function PnlContributions({ tickers, perTicker, allocations }) {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+function TickerTape({ tickers, standardizedReturns }) {
+  const items = tickers.map(t => ({
+    ticker: t,
+    value: standardizedReturns[t]?.['1d'] ?? null,
+  }));
+  const doubled = [...items, ...items];
+
+  return (
+    <div className="ticker-tape">
+      <div className="ticker-track">
+        {doubled.map((item, i) => {
+          const pos = item.value > 0;
+          const neg = item.value < 0;
+          return (
+            <span key={i} className="ticker-item">
+              <span className="ticker-symbol">{item.ticker}</span>
+              <span className={`ticker-value ${pos ? 'pos' : neg ? 'neg' : 'flat'}`}>
+                {item.value == null ? '—' : (pos ? '+' : '') + (item.value * 100).toFixed(2) + '%'}
+              </span>
+            </span>
+          );
+        })}
+      </div>
     </div>
   );
 }

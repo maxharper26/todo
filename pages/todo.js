@@ -158,10 +158,10 @@ export default function TodoPage() {
   const totalOpen = tasks.filter(t => t.status === 'open').length;
 
   return (
-    <>
-      <div className="topbar">
+    <div className="page">
+      <div className="page-header">
         <h1>📋 Tasks</h1>
-        <div className="topbar-right">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span className="stat-pill">
             <strong>{open.length}</strong> open &nbsp;·&nbsp; {totalOpen} total
           </span>
@@ -292,7 +292,7 @@ export default function TodoPage() {
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }
 
