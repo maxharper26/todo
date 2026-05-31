@@ -43,14 +43,13 @@ export default async function handler(req, res) {
       fetch(tideUrl,    { headers: { Authorization: process.env.STORMGLASS_API_KEY } }),
     ]);
 
-    // If rate limited, return stale cache if available
-    if (weatherRes.status === 429 || tideRes.status === 429) {
+    // Any non-200 from Stormglass (429 rate limit, 402 quota, etc) — serve blob
+    if (!weatherRes.ok || !tideRes.ok) {
       const cache = await getBlobCache();
       if (cache[beach]) return res.status(200).json({ ...cache[beach], stale: true });
-      return res.status(429).json({ error: 'rate_limited' });
+      const status = weatherRes.ok ? tideRes.status : weatherRes.status;
+      return res.status(502).json({ error: `Stormglass error ${status}` });
     }
-    if (!weatherRes.ok) throw new Error(`Stormglass weather ${weatherRes.status}`);
-    if (!tideRes.ok)    throw new Error(`Stormglass tide ${tideRes.status}`);
 
     const [weatherData, tideData] = await Promise.all([weatherRes.json(), tideRes.json()]);
 

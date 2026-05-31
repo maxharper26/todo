@@ -117,7 +117,6 @@ export default function SurfPage() {
     setError(null);
     try {
       const res = await fetch(`/api/surf?beach=${id}&lat=${beach.lat}&lng=${beach.lng}`);
-      if (res.status === 429) { setError('rate_limited'); return; }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       setLocalCache(id, json);
@@ -155,12 +154,7 @@ export default function SurfPage() {
 
       {loading && <p className="surf-muted">Loading {BEACHES.find(b => b.id === selected)?.label}…</p>}
 
-      {!loading && error === 'rate_limited' && (
-        <div className="surf-ratelimit">
-          <p>🌊 Rate limit hit — check <a href="https://www.surfline.com/surf-report/queenscliff/5842041f4e65fad6a77088a0" target="_blank" rel="noopener noreferrer">Surfline</a> instead.</p>
-        </div>
-      )}
-      {!loading && error && error !== 'rate_limited' && <p className="surf-error">Error: {error}</p>}
+      {!loading && error && <p className="surf-error">Error: {error}</p>}
 
       {!loading && !error && beachData && days.length > 0 && (
         <>
