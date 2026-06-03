@@ -1,19 +1,20 @@
 import { useEffect, useState } from 'react';
+import OddsTape from '../components/OddsTape';
 
 export default function NrlPage() {
-  const [roundObj, setRoundObj] = useState(null);
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState(null);
+  const [data, setData]     = useState(null);   // full {rounds: {}, updated_at}
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState(null);
 
-  const CACHE_KEY = 'nrl_cache';
-  const CACHE_TTL = 24 * 60 * 60 * 1000; // 1 day
+  const CACHE_KEY = 'nrl_cache_v2';  // bumped to bust old single-round cache
+  const CACHE_TTL = 24 * 60 * 60 * 1000;
 
   function load(force = false) {
     if (!force) {
       try {
         const cached = JSON.parse(localStorage.getItem(CACHE_KEY));
         if (cached && Date.now() - cached.ts < CACHE_TTL) {
-          setRoundObj(cached.data);
+          setData(cached.data);
           setLoading(false);
           return;
         }
@@ -23,15 +24,24 @@ export default function NrlPage() {
     setError(null);
     fetch('/api/nrl')
       .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      .then(data => {
-        setRoundObj(data);
-        try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data })); } catch {}
+      .then(blob => {
+        setData(blob);
+        try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: blob })); } catch {}
       })
       .catch(err => setError(err.message))
       .finally(() => setLoading(false));
   }
 
   useEffect(() => { load(); }, []);
+
+  // Derive latest and previous round from blob
+  const rounds = data?.rounds || {};
+  const roundKeys = Object.keys(rounds).filter(k => /^round-\d+$/.test(k))
+    .sort((a, b) => parseInt(a.split('-')[1]) - parseInt(b.split('-')[1]));
+  const latestKey = roundKeys[roundKeys.length - 1];
+  const prevKey   = roundKeys[roundKeys.length - 2];
+  const roundObj  = latestKey ? rounds[latestKey] : null;
+  const prevObj   = prevKey   ? rounds[prevKey]   : null;
 
   if (loading) return <div className="page"><p className="nrl-muted">Loading NRL data…</p></div>;
   if (error)   return <div className="page"><p className="nrl-error">Error: {error}</p></div>;
@@ -40,6 +50,7 @@ export default function NrlPage() {
 
   return (
     <div className="page">
+      <OddsTape />
       <div className="page-header">
         <h1>NRL Ins &amp; Outs</h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -48,7 +59,7 @@ export default function NrlPage() {
         </div>
       </div>
 
-      {roundObj.matches.map((match, i) => <MatchCard key={i} match={match} sourceUrl={roundObj.source_url} />)}
+      {roundObj.matches.map((match, i) => <MatchCard key={i} match={match} prevRound={prevObj} sourceUrl={roundObj.source_url} />)}
 
       {roundObj.scraped_at && (
         <p className="last-updated">Scraped: {new Date(roundObj.scraped_at).toLocaleString('en-AU')}</p>
@@ -57,43 +68,72 @@ export default function NrlPage() {
   );
 }
 
-function PlayerList({ players, type }) {
-  if (!players?.filter(Boolean).length) return null;
-  const isIns  = type === 'ins';
-  const colour = isIns ? '#22c55e' : '#ef4444';
+function squadToJerseyMap(squad) {
+  const map = {};
+  for (const section of ['Backs', 'Forwards', 'Interchange', 'Reserves']) {
+    for (const p of squad?.[section] || []) {
+      if (p?.number && p?.name) map[p.number] = p.name;
+    }
+  }
+  return map;
+}
+
+function computeDiffs(currSquad, prevSquad) {
+  const curr = squadToJerseyMap(currSquad);
+  const prev = prevSquad ? squadToJerseyMap(prevSquad) : {};
+  const jerseys = [...new Set([...Object.keys(curr), ...Object.keys(prev)])]
+    .sort((a, b) => (parseInt(a) || 99) - (parseInt(b) || 99));
+  return jerseys
+    .map(j => ({ jersey: j, prev: prev[j] || null, curr: curr[j] || null }))
+    .filter(d => d.prev !== d.curr);
+}
+
+function JerseyDiffs({ diffs, hasPrev, hadBye }) {
+  if (!hasPrev) return <p className="nrl-muted" style={{ fontSize: '0.82rem', marginTop: 8 }}>No previous round to compare</p>;
+  if (hadBye)   return <p className="nrl-muted" style={{ fontSize: '0.82rem', marginTop: 8 }}>Bye last round</p>;
+  if (!diffs.length) return <p className="nrl-muted" style={{ fontSize: '0.82rem', marginTop: 8 }}>No changes</p>;
   return (
-    <div style={{ marginTop: 10 }}>
-      <div style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: colour, marginBottom: 4 }}>
-        {isIns ? '✅ Ins' : '❌ Outs'}
-      </div>
-      <ul className="nrl-player-list">
-        {players.filter(Boolean).map((p, i) => (
-          <li key={i} style={{ borderLeft: `3px solid ${colour}` }}>{p}</li>
+    <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 8, fontSize: '0.82rem' }}>
+      <thead>
+        <tr>
+          {['#', 'Was', 'Now'].map(h => (
+            <th key={h} style={{ textAlign: 'left', padding: '3px 6px', color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.72rem' }}>{h}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {diffs.map(d => (
+          <tr key={d.jersey}>
+            <td style={{ padding: '4px 6px', fontWeight: 700, color: 'var(--text-muted)' }}>#{d.jersey}</td>
+            <td style={{ padding: '4px 6px', color: 'var(--red)', textDecoration: d.prev ? 'line-through' : 'none' }}>{d.prev || '—'}</td>
+            <td style={{ padding: '4px 6px', color: 'var(--green)' }}>{d.curr || '—'}</td>
+          </tr>
         ))}
-      </ul>
-    </div>
+      </tbody>
+    </table>
   );
 }
 
-function TeamPanel({ name, squad, accentColour }) {
-  const ins  = squad?.ins  || [];
-  const outs = squad?.outs || [];
-  const hasChanges = ins.filter(Boolean).length || outs.filter(Boolean).length;
+function TeamPanel({ name, squad, prevSquad, hasPrev, accentColour }) {
+  const hadBye = hasPrev && !prevSquad;
+  const diffs = computeDiffs(squad, prevSquad);
   return (
     <div className="nrl-team" style={{ borderTop: `3px solid ${accentColour}` }}>
       <div className="nrl-team-name">{name}</div>
-      {!hasChanges
-        ? <p className="nrl-muted" style={{ fontSize: '0.82rem', marginTop: 8 }}>No changes listed</p>
-        : <>
-            <PlayerList players={ins}  type="ins" />
-            <PlayerList players={outs} type="outs" />
-          </>
-      }
+      <JerseyDiffs diffs={diffs} hasPrev={hasPrev} hadBye={hadBye} />
     </div>
   );
 }
 
-function MatchCard({ match, sourceUrl }) {
+function MatchCard({ match, prevRound, sourceUrl }) {
+  // Look up each team's prev squad by team name (not fixture — fixtures change each round)
+  const prevSquads = {};
+  for (const m of prevRound?.matches || []) {
+    for (const side of ['home', 'away']) {
+      if (m[side]) prevSquads[m[side]] = m.squad?.[side];
+    }
+  }
+
   const href = match.url
     ? (match.url.startsWith('http') ? match.url : `https://www.nrl.com${match.url}`)
     : sourceUrl;
@@ -109,8 +149,8 @@ function MatchCard({ match, sourceUrl }) {
         {match.kickoff && <span className="nrl-kickoff">{match.kickoff}</span>}
       </div>
       <div className="nrl-teams-grid">
-        <TeamPanel name={match.home} squad={match.squad?.home} accentColour="#3b82f6" />
-        <TeamPanel name={match.away} squad={match.squad?.away} accentColour="#f97316" />
+        <TeamPanel name={match.home} squad={match.squad?.home} prevSquad={prevSquads[match.home]} hasPrev={!!prevRound} accentColour="#3b82f6" />
+        <TeamPanel name={match.away} squad={match.squad?.away} prevSquad={prevSquads[match.away]} hasPrev={!!prevRound} accentColour="#f97316" />
       </div>
     </div>
   );

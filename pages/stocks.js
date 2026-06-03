@@ -612,10 +612,11 @@ function SuperPanel() {
               {/* Headline stats */}
               <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
                 {[
-                  { label: 'Balance', value: `${fmt(superData.currentValue)}` },
-                  { label: 'P&L', value: `${fmt(superData.pnl)}`, colour: pnlColour },
                   { label: 'Total Return', value: pct(superData.totalReturn), colour: pnlColour },
-                  { label: 'Contributed', value: `${fmt(superData.totalContributed)}` },
+                  { label: 'P&L', value: `${fmt(superData.pnl)}`, colour: pnlColour },
+                  { label: 'Balance', value: `${fmt(superData.currentValue)}`, colour: pnlColour },
+
+                  // { label: 'Contributed', value: `${fmt(superData.totalContributed)}` },
                 ].map(({ label, value, colour }) => (
                   <div key={label} style={{ background: '#16161f', border: '1px solid #1e1e2e', borderRadius: 8, padding: '12px 18px', minWidth: 130 }}>
                     <div style={{ fontSize: '0.72rem', color: '#64748b', marginBottom: 4 }}>{label}</div>
