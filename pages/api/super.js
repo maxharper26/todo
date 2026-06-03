@@ -6,7 +6,7 @@
 import { fetchYahooChart } from '../../lib/yahoo.js';
 import { formatDate } from '../../lib/math.js';
 
-const START_DATE = '2026-03-21';
+const START_DATE = '2026-03-15';
 const INITIAL_CONTRIBUTION = 3362;
 const RECURRING_CONTRIBUTION = 800;
 const ALLOC = { 'VGS.AX': 0.8, 'VAS.AX': 0.2 };
