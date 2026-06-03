@@ -26,8 +26,8 @@ export default function TideChart({ tides }) {
 
   if (points.length < 2) return <p className="surf-muted">No tide data.</p>;
 
-  const W = 920, H = 190;
-  const pad = { top: 20, right: 20, bottom: 46, left: 44 };
+  const W = 920, H = 280;
+  const pad = { top: 20, right: 8, bottom: 46, left: 44 };
   const iW = W - pad.left - pad.right;
   const iH = H - pad.top - pad.bottom;
 
@@ -70,7 +70,6 @@ export default function TideChart({ tides }) {
       <svg
         viewBox={`0 0 ${W} ${H}`}
         width="100%"
-        height={160}
         onMouseMove={onMouseMove}
         onMouseLeave={() => setHovered(null)}
         style={{ display: 'block', cursor: 'crosshair', overflow: 'visible' }}

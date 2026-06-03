@@ -22,7 +22,7 @@ export default function SwellTable({ days }) {
               <td className="surf-bar-cell">
                 <div className="surf-bar-track">
                   <div className="surf-bar-fill" style={{
-                    width: `${Math.min(100, (day.swellHeight || 0) / 2.7 * 100)}%`,
+                    width: `${Math.min(100, (Math.pow(day.swellHeight || 0, 0.85) * 0.43) / 2.0 * 100)}%`,
                     background: waveColour(day.swellHeight),
                   }} />
                 </div>

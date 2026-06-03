@@ -14,8 +14,8 @@ export default function AreaChart({ points, comparatorPoints, comparatorLabel = 
   const hasComparator = comparatorPoints && comparatorPoints.length >= 2;
 
   const width = 920;
-  const chartHeight = 300;
-  const padding = { top: 22, right: 24, bottom: 40, left: 62 };
+  const chartHeight = 340;
+  const padding = { top: 22, right: 24, bottom: 42, left: 62 };
   const innerWidth = width - padding.left - padding.right;
   const innerHeight = chartHeight - padding.top - padding.bottom;
 
@@ -78,23 +78,6 @@ export default function AreaChart({ points, comparatorPoints, comparatorLabel = 
     <div style={{ marginBottom: 24, background: '#111118', border: '1px solid #1e1e2e', borderRadius: 8, padding: 18, color: '#e2e8f0' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
         <h2 style={{ margin: 0, fontSize: 20, flexShrink: 0 }}>{title}</h2>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          {hasComparator && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#64748b' }}>
-              <svg width="20" height="3" style={{ flexShrink: 0 }}><line x1="0" y1="1.5" x2="20" y2="1.5" stroke="#64748b" strokeWidth="2" strokeDasharray="4 3" /></svg>
-              <span style={{ whiteSpace: 'nowrap' }}>{comparatorLabel}</span>
-              {activeComp && <strong style={{ color: '#94a3b8', marginLeft: 4, whiteSpace: 'nowrap' }}>{formatPercent(activeComp.value)}</strong>}
-            </div>
-          )}
-          {active && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#64748b' }}>
-              <svg width="20" height="3" style={{ flexShrink: 0 }}><line x1="0" y1="1.5" x2="20" y2="1.5" stroke={color} strokeWidth="3" /></svg>
-              <span style={{ whiteSpace: 'nowrap' }}>Portfolio</span>
-              <strong style={{ color: active.value < 0 ? '#ef4444' : '#22c55e', marginLeft: 4, whiteSpace: 'nowrap' }}>{formatPercent(active.value)}</strong>
-              <span style={{ marginLeft: 4, whiteSpace: 'nowrap' }}>{formatDate(active.date)}</span>
-            </div>
-          )}
-        </div>
       </div>
       <svg
         viewBox={`0 0 ${width} ${chartHeight}`}
@@ -139,6 +122,23 @@ export default function AreaChart({ points, comparatorPoints, comparatorLabel = 
           </g>
         )}
       </svg>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end', marginTop: 8 }}>
+        {hasComparator && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#64748b' }}>
+            <svg width="20" height="3" style={{ flexShrink: 0 }}><line x1="0" y1="1.5" x2="20" y2="1.5" stroke="#64748b" strokeWidth="2" strokeDasharray="4 3" /></svg>
+            <span style={{ whiteSpace: 'nowrap' }}>{comparatorLabel}</span>
+            {activeComp && <strong style={{ color: '#94a3b8', marginLeft: 4, whiteSpace: 'nowrap' }}>{formatPercent(activeComp.value)}</strong>}
+          </div>
+        )}
+        {active && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 13, color: '#64748b' }}>
+            <svg width="20" height="3" style={{ flexShrink: 0 }}><line x1="0" y1="1.5" x2="20" y2="1.5" stroke={color} strokeWidth="3" /></svg>
+            <span style={{ whiteSpace: 'nowrap' }}>Portfolio</span>
+            <strong style={{ color: active.value < 0 ? '#ef4444' : '#22c55e', marginLeft: 4, whiteSpace: 'nowrap' }}>{formatPercent(active.value)}</strong>
+            <span style={{ marginLeft: 4, whiteSpace: 'nowrap' }}>{formatDate(active.date)}</span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
