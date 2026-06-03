@@ -1,6 +1,6 @@
 # unified-app
 
-Personal dashboard — Next.js 13, deployed on Vercel. Two pages: a portfolio tracker and a task manager. All persistent data lives in Vercel Blob.
+Personal dashboard — Next.js 13, deployed on Vercel. Four pages: portfolio tracker, task manager, NRL team lists, surf forecast. All persistent data lives in Vercel Blob.
 
 ---
 
@@ -9,14 +9,21 @@ Personal dashboard — Next.js 13, deployed on Vercel. Two pages: a portfolio tr
 ```
 unified-app/
 ├── pages/
-│   ├── index.js                  # Redirects / → /stocks
+│   ├── index.js                  # Home — greeting + 4 nav cards
 │   ├── _app.js                   # Shared layout wrapper, imports global CSS
-│   ├── stocks.js                 # Portfolio dashboard (main page)
+│   ├── stocks.js                 # Portfolio dashboard
 │   ├── todo.js                   # Task manager
+│   ├── nrl.js                    # NRL team lists — jersey diffs vs prev round + odds tape
+│   ├── surf.js                   # Surf forecast (swell, wind, tides)
 │   └── api/
 │       ├── stocks.js             # GET — orchestrates lib/* modules, returns JSON
 │       ├── portfolio.js          # GET list of trades / POST new trade / DELETE trade by id
-│       └── tasks.js              # GET tasks / PUT full tasks array → writes to blob
+│       ├── tasks.js              # GET tasks / PUT full tasks array → writes to blob
+│       ├── nrl.js                # GET — reads nrl_rounds.json blob (all rounds)
+│       ├── nrl-odds.js           # GET — proxies The Odds API, filters to current round
+│       ├── surf.js               # GET — Stormglass proxy, blob stale-cache fallback
+│       ├── auth.js               # POST — password check, sets auth cookie; rate-limited (5 attempts / 15 min lockout)
+│       └── super.js              # GET — super TWR from hardcoded contribution schedule + Yahoo
 ├── lib/                          # Shared server-side modules (imported by api/stocks.js)
 │   ├── math.js                   # Pure maths: mean, std, correlation, TWR, drawdown,
 │   │                             #   standardizedReturns, calcBeta, formatDate, pctChange
@@ -26,13 +33,17 @@ unified-app/
 │   ├── portfolio.js              # loadTrades, getOpenTickers, fetchPriceHistory, alignPrices,
 │   │                             #   buildPositions, buildBenchmark, buildVgsReturnsMap,
 │   │                             #   buildPriceSeries, buildTickerReturnPoints
-│   └── sectors.js                # SECTORS constant (list of sector names)
+│   ├── sectors.js                # SECTORS constant (list of sector names)
+│   └── surfHelpers.js            # aussieFt, waveColour, windColour, periodColour, compassDir
 ├── components/
+│   ├── OddsTape.js               # Scrolling odds ticker for NRL page (6h localStorage cache)
 │   └── charts/
 │       ├── LineChart.js          # TWR line chart; accepts avgPrice prop for cost basis line
 │       ├── AreaChart.js          # Drawdown area chart
 │       ├── Heatmap.js            # Correlation matrix heatmap
 │       ├── PieChart.js           # Allocation donut; Holdings/Sectors toggle
+│       ├── TideChart.js          # SVG tide curve with extremes labelled
+│       ├── SwellTable.js         # Daily swell/wind/period table with bar
 │       └── index.js              # Re-exports all charts
 ├── styles/
 │   ├── globals.css               # html/body reset only
@@ -40,8 +51,11 @@ unified-app/
 │                                 # Imported once in _app.js. Both pages use these classes.
 ├── scripts/
 │   ├── migrate_portfolio_to_blob.mjs   # One-off: CSV → portfolio.json blob
-│   └── add_sectors_to_trades.mjs       # One-off: adds sector field to existing trades
-└── .env.local                    # BLOB_READ_WRITE_TOKEN (not committed)
+│   ├── add_sectors_to_trades.mjs       # One-off: adds sector field to existing trades
+│   ├── inspect_nrl_blob.py             # Print current nrl_rounds.json blob structure
+│   ├── upload_nrl_blob.py              # Push local nrl_rounds.json → Vercel Blob (all round-N keys, skips 'main')
+│   └── fetch_nrl_odds.py               # Fetch current NRL odds from The Odds API and print them
+└── .env.local                    # Secrets (not committed)
 ```
 
 ---
@@ -63,6 +77,28 @@ Fetches `/api/stocks` on load. Displays:
 - **Trade History** — Collapsible, lazy-loads from `/api/portfolio`. Sorted newest first, buy/sell badge, delete button.
 - **Add trade modal** — Buy/sell toggle, ticker/date/price/units/sector fields. Sector auto-populates from existing holding on ticker entry. Reloads data after submit.
 
+### `/nrl` — Team Lists
+
+Reads `nrl_rounds.json` from Vercel Blob (written by the teamlists Lambda). Blob now stores **all rounds** (keyed `round-N`). Page derives latest and previous round client-side, computes **jersey-level diffs** (who changed per jersey number vs same team's prior round squad). localStorage cache (24h TTL, key `nrl_cache_v2`) with force-refresh button.
+
+- **OddsTape** — scrolling ticker above match cards showing h2h odds for the current round. Fetched from `/api/nrl-odds`, cached 6h in localStorage.
+- **Jersey diffs** — `# | Was | Now` table per team. Bye detection: if a team has no entry in the previous round they get "Bye last round" rather than a full squad diff.
+- **Matching logic** — diffs are keyed by team name (not fixture), so cross-round matchup changes don't break the lookup.
+
+### `/surf` — Surf Forecast
+
+Beach selector (Queenscliff, Bondi). Fetches `/api/surf` which proxies Stormglass (10 calls/day limit). localStorage cache (24h TTL). On Stormglass 429 falls back to `surf-cache.json` blob with `stale: true` warning.
+
+- **Headlines strip** — today's swell (aussie ft), avg wind, period, current tide height + direction
+- **Swell table** — 7-day forecast with colour-coded bar. Green = 2ft+, amber = 1–2ft or 8ft+, red = flat
+- **Tide chart** — SVG spline curve of tide extremes over next ~4 days
+
+**Swell height dampening:** `aussieFt()` in `lib/surfHelpers.js` applies `v^0.85 * 0.43` to Stormglass `swellHeight` (offshore significant wave height in metres) before bucketing into aussie ft labels. Calibrated so 2.5m raw ≈ 2–3ft at beach. Adjust the multiplier (`0.43`) to shift all readings up/down uniformly.
+
+### `/stocks` — Super panel
+
+Collapsible `SuperPanel` at the bottom of the stocks page. Lazy-loads `/api/super` on first open. Hardcoded schedule: $3360 on 2026-03-15, then $800 on the 15th of each month. Allocation: 80% VGS.AX / 20% VAS.AX. Shows TWR chart + headline stats (balance, P&L, total return, contributed).
+
 ### `/todo` — Task Manager
 
 Kanban board (High/Medium/Low urgency columns). Tasks stored in `tasks.json` blob. Features: drag-and-drop to reprioritise (drag handle is the card header row), close/reopen, edit (pencil button opens modal pre-filled), work/all category filter, due dates with overdue highlighting, add/edit task modal, copyable text in cards.
@@ -76,6 +112,8 @@ Kanban board (High/Medium/Low urgency columns). Tasks stored in `tasks.json` blo
 | `portfolio.json` | `/api/portfolio` POST | `/api/stocks`, `/api/portfolio` GET | Array of trade objects |
 | `tasks.json` | `/api/tasks` PUT | `/api/tasks` GET | `{ tasks: [...] }` |
 | `etf-correlations.json` | `lib/etfs.js` | `lib/etfs.js` | 7-day TTL, cache key = ETF list hash + open tickers |
+| `nrl_rounds.json` | teamlists Lambda | `/api/nrl` GET | All rounds `{ rounds: { round-N: {...} }, updated_at }` |
+| `surf-cache.json` | `/api/surf` | `/api/surf` | Stale fallback on Stormglass 429; keyed by beach ID |
 
 ### Trade schema (`portfolio.json`)
 
@@ -119,6 +157,29 @@ Kanban board (High/Medium/Low urgency columns). Tasks stored in `tasks.json` blo
 
 ---
 
+## Lambdas (`/lambdas/teamlists/`)
+
+Scrapes NRL team lists and writes to both S3 and Vercel Blob. EventBridge cron: Sunday 9pm UTC (Monday 7am AEST).
+
+**`main.py`** — handler entry point:
+1. Loads existing rounds from S3
+2. Discovers latest team lists URL by scraping `nrl.com/news/topic/team-lists/` (finds first `<a class="card">` matching `/nrl-team-lists-round-\d+/`)
+3. Parses round HTML → `round_object`
+4. Saves all rounds to S3
+5. Writes full `{ rounds: {...}, updated_at }` to Vercel Blob (overwrites; all `round-N` keys preserved)
+6. Computes jersey diffs vs previous round, sends HTML email
+
+**`helpers.py`** — parsing + output:
+- `parse_round` / `parse_match` / `parse_section` — BeautifulSoup HTML parsing
+- `_squad_to_jersey_map(squad)` — flattens `{Backs, Forwards, Interchange, Reserves}` → `{jersey_number: name}`
+- `compute_jersey_diffs(current, prev)` — compares by **team name** (not fixture), returns `[{jersey, prev, curr}]` per match. Sets `home_bye`/`away_bye` flags if team absent from previous round.
+- `generate_ins_outs_html(round, prev_round)` — produces email HTML with `# | Was | Now` diff tables
+- `write_rounds_to_blob(payload)` — PUT to Vercel Blob (`BLOB_TOKEN` env var required)
+
+**NRL team name mapping** (Odds API full name → blob short name) lives in `pages/api/nrl-odds.js`.
+
+---
+
 ## API: `/api/stocks`
 
 Thin orchestration handler. All logic lives in `lib/`. Runs sequentially per ticker to avoid Yahoo rate limits.
@@ -146,29 +207,24 @@ portfolio.json (blob)
   → JSON response
 ```
 
-**Response shape (abbreviated):**
+---
 
-```js
-{
-  tickers,              // display tickers (no .AX suffix)
-  perTicker,            // { [ticker]: { latestPrice, units, avgPrice, positionValue,
-                        //   totalReturn, sharpe, beta, sector } }
-  allocations,          // sorted by weight desc, includes sector
-  sectorAllocations,    // [{ sector, value, weight }] sorted by value desc
-  portfolio,            // { total_cost, current_value, portfolio_return, sharpe, beta }
-                        //   total_cost converts USD positions to AUD at current rate
-  twrSeries,            // [{ date, value }] rebased to 100
-  drawdownSeries,
-  benchmarkTwrSeries,   // VGS.AX rebased to 100 at portfolio start
-  benchmarkDrawdownSeries,
-  standardizedReturns,  // { Portfolio, [ticker]: { 1d, 1w, 1m } }
-  correlationMatrix,
-  lowCorrelationEtfs,   // top 40 lowest-correlation ETFs
-  etfUpdatedAt,         // ISO string — when ETF cache was last written
-  priceSeries,          // { [ticker]: [{ date, value }] } raw close prices
-  loaded_at
-}
-```
+## Auth
+
+`middleware.js` protects all routes except `/login`, `/api/auth`, `/_next`, `/favicon.ico`. Sets a 30-day `auth=ok` httpOnly cookie on success.
+
+`/api/auth` rate-limits by IP: 5 failed attempts triggers a 15-min lockout. Counter is module-level (resets on Lambda cold start — acceptable for personal use).
+
+---
+
+## Environment
+
+| Variable | Where | Purpose |
+|---|---|---|
+| `BLOB_READ_WRITE_TOKEN` | `.env.local` + Vercel | Vercel Blob read/write |
+| `AUTH_PASSWORD` | `.env.local` + Vercel | Login password |
+| `STORMGLASS_API_KEY` | `.env.local` + Vercel | Surf forecast |
+| `ODDS_API_KEY` | `.env.local` + Vercel | NRL odds (the-odds-api.com, free tier 500 req/month) |
 
 ---
 
@@ -208,14 +264,6 @@ To add a sector: add it to `lib/sectors.js`, then run `node scripts/add_sectors_
 
 ---
 
-## Environment
-
-| Variable | Where | Purpose |
-|---|---|---|
-| `BLOB_READ_WRITE_TOKEN` | `.env.local` + Vercel project settings | Vercel Blob read/write access |
-
----
-
 ## Known gaps / future work
 
 - No loading indicator after add-trade submit (page reloads fully, takes 30s+ on cold start) — fix is to split ETF correlations into a separate lazy endpoint
@@ -223,3 +271,6 @@ To add a sector: add it to `lib/sectors.js`, then run `node scripts/add_sectors_
 - Mobile layout: returns table overflows on narrow screens (min-width 1020px)
 - `portfolioSeries` (absolute AUD portfolio value over time) was removed — would be useful to re-add
 - No edit on trade history (delete and re-add as workaround)
+- Super contribution schedule is hardcoded in `pages/api/super.js` — not editable via UI
+- Surf dampening calibrated for Sydney beaches; would need adjustment for other breaks
+- Auth rate-limit counter resets on Lambda cold start — for stronger protection, persist to Blob
