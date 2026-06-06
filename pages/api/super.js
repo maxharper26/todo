@@ -118,6 +118,19 @@ export default async function handler(req, res) {
 
     const { twrSeries, portfolioValues } = computeTwr(allDates, pricesByTicker, contributions);
 
+    // VGS benchmark series rebased to 100 from START_DATE
+    let benchmarkTwrSeries = null;
+    try {
+      const vgsSeries = await fetchYahooChart('VGS.AX', fetchStart, end);
+      const vgsFiltered = vgsSeries.filter(p => p.date >= START_DATE);
+      if (vgsFiltered.length >= 2) {
+        const startVal = vgsFiltered[0].close;
+        benchmarkTwrSeries = vgsFiltered.map(p => ({ date: p.date, value: (p.close / startVal) * 100 }));
+      }
+    } catch (e) {
+      console.warn('VGS benchmark fetch failed for super:', e?.message);
+    }
+
     // Headline stats
     const currentValue = portfolioValues[portfolioValues.length - 1] ?? 0;
     const totalContributed = contributions.reduce((s, c) => s + c.amount, 0);
@@ -126,6 +139,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       twrSeries,
+      benchmarkTwrSeries,
       currentValue,
       totalContributed,
       pnl,
