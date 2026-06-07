@@ -1,10 +1,12 @@
 import Link from 'next/link';
 
 const PAGES = [
-  { href: '/stocks', label: 'Finance',  icon: '📈', desc: 'Portfolio, returns, COT signals' },
   { href: '/todo',   label: 'Todo',     icon: '✓',  desc: 'Tasks and priorities' },
+  { href: '/stocks', label: 'Finance',  icon: '📈', desc: 'Portfolio, returns' },
   { href: '/nrl',    label: 'NRL',      icon: '🏉', desc: 'Team lists and ins & outs' },
   { href: '/surf',   label: 'Surf',     icon: '🌊', desc: 'Swell, wind and tides' },
+  { href: '/news',   label: 'News',     icon: '📰', desc: 'Finance news' },
+
 ];
 
 export default function Home() {

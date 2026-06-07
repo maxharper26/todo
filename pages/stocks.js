@@ -214,6 +214,7 @@ export default function StocksPage() {
         <h1>Stocks</h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button className="btn btn-primary" onClick={() => { setTradeModal(true); setTradeError(null); }}>+ Add trade</button>
+          <button className="btn" onClick={() => load(true)} disabled={refreshing} style={{ background: 'var(--surface-2)', border: '1px solid var(--border-2)', color: 'var(--text-muted)', opacity: refreshing ? 0.5 : 1 }}>{refreshing ? 'Refreshing…' : 'Refresh'}</button>
         </div>
       </div>
 
