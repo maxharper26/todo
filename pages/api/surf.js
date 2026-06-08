@@ -1,12 +1,10 @@
-import { put, list } from '@vercel/blob';
+import { put, head } from '@vercel/blob';
 
 const BLOB_KEY = 'surf-cache.json';
 
 async function getBlobCache() {
   try {
-    const { blobs } = await list({ prefix: BLOB_KEY });
-    const blob = blobs.find(b => b.pathname === BLOB_KEY);
-    if (!blob) return {};
+    const blob = await head(BLOB_KEY);
     return await fetch(blob.url).then(r => r.json());
   } catch { return {}; }
 }

@@ -1,12 +1,10 @@
-import { put, list } from '@vercel/blob';
+import { put, head } from '@vercel/blob';
 
 const BLOB_KEY = 'portfolio.json';
 
 async function getTrades() {
   try {
-    const { blobs } = await list();
-    const blob = blobs.find(b => b.pathname === BLOB_KEY);
-    if (!blob) return [];
+    const blob = await head(BLOB_KEY);
     const res = await fetch(blob.url);
     return await res.json();
   } catch (e) {

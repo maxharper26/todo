@@ -1,12 +1,10 @@
-import { put, list } from '@vercel/blob';
+import { put, head } from '@vercel/blob';
 
 const BLOB_KEY = 'tasks.json';
 
 async function getTasks() {
   try {
-    const { blobs } = await list();
-    const blob = blobs.find(b => b.pathname === BLOB_KEY);
-    if (!blob) return { tasks: [] };
+    const blob = await head(BLOB_KEY);
     const res = await fetch(blob.url);
     return await res.json();
   } catch (e) {
@@ -35,9 +33,6 @@ export default async function handler(req, res) {
     const pruned = data.tasks.filter(t =>
       t.status !== 'closed' || new Date(t.updated_at).getTime() > cutoff
     );
-    if (pruned.length !== data.tasks.length) {
-      await saveTasks({ tasks: pruned });
-    }
     return res.status(200).json({ tasks: pruned });
   }
 
