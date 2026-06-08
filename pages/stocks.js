@@ -65,6 +65,8 @@ const SECTORS = [
 
 const CACHE_KEY = 'stocks_cache';
 const CACHE_TTL = 30 * 60 * 1000;
+const WATCHLIST_CACHE_KEY = 'watchlist_cache';
+const WATCHLIST_CACHE_TTL = 30 * 60 * 1000;
 
 const TRADE_FORM_DEFAULT = { ticker: '', date: new Date().toISOString().slice(0, 10), price: '', units: '', action: 'buy', sector: '' };
 
@@ -79,6 +81,11 @@ export default function StocksPage() {
   const [tradeForm, setTradeForm] = useState(TRADE_FORM_DEFAULT);
   const [tradeSubmitting, setTradeSubmitting] = useState(false);
   const [tradeError, setTradeError] = useState(null);
+  const [watchlistData, setWatchlistData] = useState(null);
+  const [watchlistLoading, setWatchlistLoading] = useState(false);
+  const [watchlistEditing, setWatchlistEditing] = useState(false);
+  const [watchlistInput, setWatchlistInput] = useState('');
+  const [watchlistSaving, setWatchlistSaving] = useState(false);
   const etfLoadedRef = useRef(false);
 
   async function load(force = false) {
@@ -129,11 +136,66 @@ export default function StocksPage() {
     }
   }
 
-  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); loadWatchlist(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // Only load ETFs once on initial data load, not on every refresh
   useEffect(() => {
     if (data && !etfLoadedRef.current) loadEtfs();
   }, [data]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function loadWatchlist(force = false) {
+    if (!force) {
+      try {
+        const cached = JSON.parse(localStorage.getItem(WATCHLIST_CACHE_KEY));
+        if (cached && Date.now() - cached.ts < WATCHLIST_CACHE_TTL) {
+          setWatchlistData(cached.data);
+          setWatchlistLoading(false);
+          return;
+        }
+      } catch {}
+    }
+    setWatchlistLoading(true);
+    try {
+      const res = await fetch('/api/watchlist');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      setWatchlistData(json);
+      try { localStorage.setItem(WATCHLIST_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: json })); } catch {}
+    } catch (e) {
+      console.warn('Watchlist load failed:', e.message);
+    } finally {
+      setWatchlistLoading(false);
+    }
+  }
+
+  async function saveWatchlist(newRawTickers) {
+    setWatchlistSaving(true);
+    try {
+      const res = await fetch('/api/watchlist', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tickers: newRawTickers }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      try { localStorage.removeItem(WATCHLIST_CACHE_KEY); } catch {}
+      await loadWatchlist(true);
+    } catch (e) {
+      console.warn('Watchlist save failed:', e.message);
+    } finally {
+      setWatchlistSaving(false);
+    }
+  }
+
+  async function handleWatchlistAdd() {
+    const toAdd = watchlistInput.split(/[,\s]+/).map(t => t.trim().toUpperCase()).filter(Boolean);
+    if (!toAdd.length) return;
+    const merged = Array.from(new Set([...(watchlistData?.rawTickers || []), ...toAdd]));
+    setWatchlistInput('');
+    await saveWatchlist(merged);
+  }
+
+  async function handleWatchlistRemove(rawTicker) {
+    await saveWatchlist((watchlistData?.rawTickers || []).filter(t => t !== rawTicker));
+  }
 
   async function submitTrade() {
     const { ticker, date, price, units, action } = tradeForm;
@@ -170,6 +232,8 @@ export default function StocksPage() {
   const { perTicker, portfolio, allocations, twrSeries, drawdownSeries, benchmarkTwrSeries, benchmarkDrawdownSeries, standardizedReturns, correlationMatrix, priceSeries, sectorAllocations, tickers, loaded_at } = data;
   const lowCorrelationEtfs = etfData?.lowCorrelationEtfs;
   const etfUpdatedAt = etfData?.etfUpdatedAt;
+  const watchlistPriceSeries = watchlistData?.priceSeries ?? null;
+  const watchlistTickers = watchlistData?.tickers ?? [];
 
   const portfolioTotalReturn = twrSeries?.length ? (twrSeries[twrSeries.length - 1].value - 100) / 100 : null;
   const returnRows = standardizedReturns ? [
@@ -207,7 +271,7 @@ export default function StocksPage() {
     <div className="page">
 
       {/* Ticker tape */}
-      {standardizedReturns && <TickerTape tickers={tickers} standardizedReturns={standardizedReturns} />}
+      {standardizedReturns && <TickerTape tickers={tickers} standardizedReturns={standardizedReturns} watchlistData={watchlistData} />}
 
       {/* Header */}
       <div className="page-header">
@@ -365,8 +429,98 @@ export default function StocksPage() {
         {allocations && <PieChart allocations={allocations} sectorAllocations={sectorAllocations} size={520} />}
       </div>
 
+      {/* Watchlist */}
+      {(() => {
+        const wRows = (watchlistData?.tickers || []).map(t => ({
+          asset: t,
+          rawTicker: watchlistData.rawTickers?.[watchlistData.tickers.indexOf(t)],
+          latestPrice: watchlistData.perTicker[t]?.latestPrice,
+          oneDay:   watchlistData.perTicker[t]?.oneDay,
+          oneWeek:  watchlistData.perTicker[t]?.oneWeek,
+          oneMonth: watchlistData.perTicker[t]?.oneMonth,
+          oneYear:  watchlistData.perTicker[t]?.oneYear,
+          sharpe:   watchlistData.perTicker[t]?.sharpe,
+          beta:     watchlistData.perTicker[t]?.beta,
+        }));
+        const wStats = {
+          oneDay:   getColumnStats(wRows, 'oneDay'),
+          oneWeek:  getColumnStats(wRows, 'oneWeek'),
+          oneMonth: getColumnStats(wRows, 'oneMonth'),
+          oneYear:  getColumnStats(wRows, 'oneYear'),
+          sharpe:   getColumnStats(wRows, 'sharpe'),
+          beta:     getColumnStats(wRows, 'beta'),
+        };
+        return (
+          <div className="panel">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <h2 style={{ margin: 0 }}>Watchlist</h2>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                {watchlistEditing && (
+                  <>
+                    <input
+                      value={watchlistInput}
+                      onChange={e => setWatchlistInput(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleWatchlistAdd()}
+                      placeholder="IVV.AX, AAPL"
+                      style={{ background: '#16161f', border: '1px solid #2a2a3d', color: '#e2e8f0', borderRadius: 6, padding: '4px 10px', fontSize: '0.82rem', width: 180 }}
+                    />
+                    <button onClick={handleWatchlistAdd} disabled={watchlistSaving || !watchlistInput.trim()} className="btn btn-primary" style={{ fontSize: '0.78rem', padding: '4px 12px', opacity: watchlistSaving || !watchlistInput.trim() ? 0.5 : 1 }}>{watchlistSaving ? 'Saving…' : 'Add'}</button>
+                  </>
+                )}
+                <button
+                  onClick={() => setWatchlistEditing(v => !v)}
+                  style={{
+                    fontSize: '0.72rem', fontWeight: 600, padding: '3px 10px', borderRadius: 4, cursor: 'pointer',
+                    background: watchlistEditing ? 'var(--accent)' : 'var(--surface-2)',
+                    border: `1px solid ${watchlistEditing ? 'var(--accent)' : 'var(--border-2)'}`,
+                    color: watchlistEditing ? '#fff' : 'var(--text-muted)',
+                  }}
+                >{watchlistEditing ? 'Done' : 'Edit'}</button>
+              </div>
+            </div>
+            {watchlistLoading && <p style={{ color: '#64748b', fontSize: '0.85rem' }}>Loading…</p>}
+            {!watchlistLoading && wRows.length === 0 && (
+              <p style={{ color: '#3a3a52', fontSize: '0.85rem' }}>No tickers — click Edit to add some.</p>
+            )}
+            {!watchlistLoading && wRows.length > 0 && (
+              <div className="panel-scroll">
+                <table className="returns-table">
+                  <thead>
+                    <tr>
+                      {watchlistEditing && <th></th>}
+                      <th>Asset</th><th>Price</th>
+                      <th>1d</th><th>1w</th><th>1m</th><th>1y</th>
+                      <th>Sharpe</th><th>Beta</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {wRows.map(row => (
+                      <tr key={row.asset} className="row-ticker">
+                        {watchlistEditing && (
+                          <td style={{ paddingRight: 6 }}>
+                            <button onClick={() => handleWatchlistRemove(row.rawTicker)} disabled={watchlistSaving} style={{ fontSize: '0.7rem', padding: '1px 6px', borderRadius: 4, cursor: 'pointer', background: 'rgba(239,68,68,.15)', border: '1px solid rgba(239,68,68,.3)', color: '#ef4444', opacity: watchlistSaving ? 0.5 : 1 }}>✕</button>
+                          </td>
+                        )}
+                        <td style={{ fontWeight: 600 }}>{row.asset}</td>
+                        <td className="num" style={{ color: '#64748b' }}>{row.latestPrice != null ? fmt(row.latestPrice) : '—'}</td>
+                        <td className="num" style={conditionalCellStyle(row.oneDay,   wStats.oneDay)}>{pct(row.oneDay)}</td>
+                        <td className="num" style={conditionalCellStyle(row.oneWeek,  wStats.oneWeek)}>{pct(row.oneWeek)}</td>
+                        <td className="num" style={conditionalCellStyle(row.oneMonth, wStats.oneMonth)}>{pct(row.oneMonth)}</td>
+                        <td className="num" style={conditionalCellStyle(row.oneYear,  wStats.oneYear)}>{pct(row.oneYear)}</td>
+                        <td className="num" style={conditionalCellStyle(row.sharpe,   wStats.sharpe)}>{fmt(row.sharpe)}</td>
+                        <td className="num" style={conditionalCellStyle(row.beta,     wStats.beta)}>{row.beta != null ? fmt(row.beta) : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* Single Asset Viewer */}
-      {priceSeries && tickers.length > 0 && <TickerChart priceSeries={priceSeries} tickers={tickers} perTicker={perTicker} />}
+      {priceSeries && tickers.length > 0 && <TickerChart priceSeries={priceSeries} tickers={tickers} perTicker={perTicker} watchlistPriceSeries={watchlistData?.priceSeries ?? null} watchlistTickers={watchlistData?.tickers ?? []} />}
 
 
       {/* ETF Correlations */}
@@ -383,12 +537,99 @@ export default function StocksPage() {
 
       <TradeHistory onDelete={() => load(true)} />
 
+      <CotPanel />
+
       <div className="last-updated">Last updated: {new Date(loaded_at).toLocaleString()}</div>
     </div>
   );
 }
 
-function PortfolioChartToggle({ twrSeries, benchmarkTwrSeries, drawdownSeries, benchmarkDrawdownSeries }) {
+function CotPanel() {
+  const [open, setOpen] = useState(false);
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const loadedRef = useRef(false);
+
+  function handleOpen() {
+    setOpen(o => {
+      const next = !o;
+      if (next && !loadedRef.current) {
+        setLoading(true);
+        fetch('/api/cot')
+          .then(r => r.json())
+          .then(d => { setData(d); loadedRef.current = true; })
+          .catch(e => console.warn('COT load failed:', e))
+          .finally(() => setLoading(false));
+      }
+      return next;
+    });
+  }
+
+  const signals = data?.signals ?? [];
+  // sort by abs delta descending
+  const sorted = [...signals].sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+  const maxAbs = sorted.length ? Math.max(...sorted.map(s => Math.abs(s.delta))) : 1;
+
+  return (
+    <div style={{ marginBottom: 24, background: '#111118', border: '1px solid #1e1e2e', borderRadius: 8, color: '#e2e8f0' }}>
+      <div onClick={handleOpen} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', cursor: 'pointer', userSelect: 'none' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+          <h2 style={{ margin: 0, fontSize: 20 }}>COT Signals</h2>
+          {data?.last_updated && <span style={{ fontSize: '0.72rem', color: '#3a3a52' }}>as of {data.last_updated}</span>}
+        </div>
+        <span style={{ fontSize: '0.65rem', color: '#64748b', display: 'inline-block', transition: 'transform 0.2s', transform: open ? 'rotate(90deg)' : 'none' }}>▶</span>
+      </div>
+      {open && (
+        <div style={{ padding: '0 18px 18px' }}>
+          {loading && <p style={{ color: '#64748b', fontSize: '0.85rem' }}>Loading…</p>}
+          {!loading && sorted.length === 0 && <p style={{ color: '#3a3a52', fontSize: '0.85rem' }}>No signals.</p>}
+          {!loading && sorted.length > 0 && (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                <thead>
+                  <tr style={{ color: '#64748b', borderBottom: '1px solid #1e1e2e', textAlign: 'left' }}>
+                    <th style={{ padding: '6px 10px' }}>Market</th>
+                    <th style={{ padding: '6px 10px', color: '#3a3a52' }}>Category</th>
+                    <th style={{ padding: '6px 10px', textAlign: 'right' }}>L/S Ratio</th>
+                    <th style={{ padding: '6px 10px', textAlign: 'right' }}>Prev</th>
+                    <th style={{ padding: '6px 10px' }}>Week Δ</th>
+                    <th style={{ padding: '6px 10px', textAlign: 'right' }}>Long</th>
+                    <th style={{ padding: '6px 10px', textAlign: 'right' }}>Short</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map((s, i) => {
+                    const isPos = s.delta > 0;
+                    const barPct = maxAbs > 0 ? (Math.abs(s.delta) / maxAbs) * 100 : 0;
+                    const color = isPos ? '#22c55e' : '#ef4444';
+                    return (
+                      <tr key={s.market} style={{ borderBottom: '1px solid #16161f', background: i % 2 === 0 ? '#111118' : '#16161f' }}>
+                        <td style={{ padding: '6px 10px', fontWeight: 700 }}>{s.market}</td>
+                        <td style={{ padding: '6px 10px', color: '#3a3a52', fontSize: '0.78rem' }}>{s.category}</td>
+                        <td style={{ padding: '6px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#e2e8f0' }}>{s.ratio_now.toFixed(3)}</td>
+                        <td style={{ padding: '6px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#64748b' }}>{s.ratio_prev.toFixed(3)}</td>
+                        <td style={{ padding: '6px 10px', minWidth: 140 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div style={{ flex: 1, background: '#16161f', borderRadius: 4, height: 8, overflow: 'hidden' }}>
+                              <div style={{ width: `${barPct}%`, height: '100%', background: color, borderRadius: 4 }} />
+                            </div>
+                            <span style={{ fontSize: '0.78rem', color, fontVariantNumeric: 'tabular-nums', minWidth: 52, textAlign: 'right' }}>{isPos ? '+' : ''}{s.delta.toFixed(3)}</span>
+                          </div>
+                        </td>
+                        <td style={{ padding: '6px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#94a3b8' }}>{s.long.toLocaleString()}</td>
+                        <td style={{ padding: '6px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#94a3b8' }}>{s.short.toLocaleString()}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}function PortfolioChartToggle({ twrSeries, benchmarkTwrSeries, drawdownSeries, benchmarkDrawdownSeries }) {
   const [view, setView] = useState('twr');
   return (
     <div style={{ position: 'relative' }}>
@@ -457,11 +698,12 @@ function PnlContributions({ tickers, perTicker, allocations }) {
   );
 }
 
-function TickerTape({ tickers, standardizedReturns }) {
-  const items = tickers.map(t => ({
-    ticker: t,
-    value: standardizedReturns[t]?.['1d'] ?? null,
-  }));
+function TickerTape({ tickers, standardizedReturns, watchlistData }) {
+  const portfolioItems = tickers.map(t => ({ ticker: t, value: standardizedReturns[t]?.['1d'] ?? null, isWatchlist: false }));
+  const watchlistItems = (watchlistData?.tickers || [])
+    .filter(t => !tickers.includes(t))
+    .map(t => ({ ticker: t, value: watchlistData.perTicker[t]?.oneDay ?? null, isWatchlist: true }));
+  const items = [...portfolioItems, watchlistItems.length ? { ticker: '│', value: null, isSep: true } : null, ...watchlistItems].filter(Boolean);
   const doubled = [...items, ...items];
 
   return (
@@ -472,10 +714,13 @@ function TickerTape({ tickers, standardizedReturns }) {
           const neg = item.value < 0;
           return (
             <span key={i} className="ticker-item">
-              <span className="ticker-symbol">{item.ticker}</span>
-              <span className={`ticker-value ${pos ? 'pos' : neg ? 'neg' : 'flat'}`}>
-                {item.value == null ? '—' : (pos ? '+' : '') + (item.value * 100).toFixed(2) + '%'}
-              </span>
+              {item.isSep
+                ? <span style={{ color: '#2a2a3d', margin: '0 4px' }}>│</span>
+                : <><span className="ticker-symbol" style={item.isWatchlist ? { color: '#64748b' } : {}}>{item.ticker}</span>
+                   <span className={`ticker-value ${pos ? 'pos' : neg ? 'neg' : 'flat'}`}>
+                     {item.value == null ? '—' : (pos ? '+' : '') + (item.value * 100).toFixed(2) + '%'}
+                   </span></>
+              }
             </span>
           );
         })}
@@ -859,11 +1104,22 @@ function EtfCorrelations({ etfs, updatedAt }) {
   );
 }
 
-function TickerChart({ priceSeries, tickers, perTicker }) {
-  const [selected, setSelected] = useState(tickers[0]);
+function TickerChart({ priceSeries, tickers, perTicker, watchlistPriceSeries, watchlistTickers }) {
+  // Merge portfolio and watchlist tickers/series
+  const allSeries = { ...priceSeries, ...(watchlistPriceSeries || {}) };
+  const allTickers = [
+    ...tickers,
+    ...((watchlistTickers || []).filter(t => !tickers.includes(t))),
+  ];
+
+  const [selected, setSelected] = useState(allTickers[0]);
   const [open, setOpen] = useState(false);
-  const points = priceSeries[selected] || [];
-  const avgPrice = perTicker[selected]?.avgPrice ?? null;
+
+  // If selected is no longer in allTickers (e.g. watchlist loaded later), reset
+  const safeSelected = allTickers.includes(selected) ? selected : allTickers[0];
+  const points = allSeries[safeSelected] || [];
+  const avgPrice = perTicker[safeSelected]?.avgPrice ?? null;
+  const isWatchlist = watchlistTickers?.includes(safeSelected) && !tickers.includes(safeSelected);
 
   return (
     <div style={{ marginBottom: 24, background: '#111118', border: '1px solid #1e1e2e', borderRadius: 8, color: '#e2e8f0' }}>
@@ -875,12 +1131,13 @@ function TickerChart({ priceSeries, tickers, perTicker }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           {open && (
             <select
-              value={selected}
+              value={safeSelected}
               onClick={e => e.stopPropagation()}
               onChange={e => setSelected(e.target.value)}
               style={{ background: '#16161f', border: '1px solid #2a2a3d', color: '#e2e8f0', borderRadius: 6, padding: '6px 10px', fontSize: '0.85rem', cursor: 'pointer' }}
             >
-              {tickers.map(t => <option key={t} value={t}>{t}</option>)}
+              {tickers.length > 0 && <optgroup label="Portfolio">{tickers.map(t => <option key={t} value={t}>{t}</option>)}</optgroup>}
+              {watchlistTickers?.length > 0 && <optgroup label="Watchlist">{watchlistTickers.filter(t => !tickers.includes(t)).map(t => <option key={t} value={t}>{t}</option>)}</optgroup>}
             </select>
           )}
           <span style={{ fontSize: '0.65rem', color: '#64748b', transition: 'transform 0.2s', display: 'inline-block', transform: open ? 'rotate(90deg)' : 'none' }}>▶</span>
@@ -888,9 +1145,11 @@ function TickerChart({ priceSeries, tickers, perTicker }) {
       </div>
       {open && (
         <div style={{ padding: '0 18px 18px' }}>
-          <LineChart key={selected} points={points} height={320} title="" avgPrice={avgPrice} />
+          {isWatchlist && <div style={{ fontSize: '0.72rem', color: '#64748b', marginBottom: 8 }}>Watchlist — no cost basis</div>}
+          <LineChart key={safeSelected} points={points} height={320} title="" avgPrice={avgPrice} />
         </div>
       )}
     </div>
   );
 }
+
