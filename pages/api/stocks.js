@@ -3,6 +3,7 @@ import {
   buildPositions, buildBenchmark, buildVgsReturnsMap,
   buildPriceSeries, buildTickerReturnPoints, USD_ALLOCATION_TICKERS,
 } from '../../lib/portfolio.js';
+import { put, head } from '@vercel/blob';
 import {
   calculateTWR, calculateDrawdown, calculateStandardizedReturns,
   calcBeta, correlation, pctChange, mean, std, formatDate,
@@ -152,6 +153,20 @@ export default async function handler(req, res) {
       sectorAllocations,
       loaded_at: new Date().toISOString(),
     });
+
+    // Fire-and-forget TWR cache for portfolio site — only if stale (>24h)
+    (async () => {
+      try {
+        const meta = await head('portfolio-twr-cache.json');
+        const age = Date.now() - new Date(meta.uploadedAt).getTime();
+        if (age < 24 * 60 * 60 * 1000) return;
+      } catch (_) { /* blob doesn't exist yet — write it */ }
+      put(
+        'portfolio-twr-cache.json',
+        JSON.stringify(twrSeries.map(p => ({ date: p.date, twr: p.value }))),
+        { access: 'public', contentType: 'application/json', addRandomSuffix: false }
+      ).catch(e => console.warn('TWR cache write failed:', e));
+    })();
 
   } catch (err) {
     console.error(err);
