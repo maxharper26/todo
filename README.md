@@ -24,7 +24,7 @@ unified-app/
 │       ├── surf.js               # GET — Stormglass proxy, blob stale-cache fallback
 │       ├── auth.js               # POST — password check, sets auth cookie; rate-limited (5 attempts / 15 min lockout)
 │       └── super.js              # GET — super TWR from hardcoded contribution schedule + Yahoo
-├── lib/                          # Shared server-side modules (imported by api/stocks.js)
+├── lib/                          # Shared modules
 │   ├── math.js                   # Pure maths: mean, std, correlation, TWR, drawdown,
 │   │                             #   standardizedReturns, calcBeta, formatDate, pctChange
 │   ├── yahoo.js                  # fetchYahooChart, fetchUsdToAudRate, dailyReturnPoints
@@ -34,9 +34,20 @@ unified-app/
 │   │                             #   buildPositions, buildBenchmark, buildVgsReturnsMap,
 │   │                             #   buildPriceSeries, buildTickerReturnPoints
 │   ├── sectors.js                # SECTORS constant (list of sector names)
+│   ├── stocksFormatters.js       # Client-side display helpers: pct, fmt, returnStyle, mixColor,
+│   │                             #   conditionalCellStyle, getColumnStats
 │   └── surfHelpers.js            # aussieFt, waveColour, windColour, periodColour, compassDir
 ├── components/
 │   ├── OddsTape.js               # Scrolling odds ticker for NRL page (6h localStorage cache)
+│   ├── stocks/                   # Stocks page panel components
+│   │   ├── CotPanel.js           # COT signals table (lazy-loads /api/cot)
+│   │   ├── EtfCorrelations.js    # Low-correlation ETF list (collapsible)
+│   │   ├── PnlContributions.js   # Per-ticker P&L contribution bar chart (collapsible)
+│   │   ├── PortfolioChartToggle.js # TWR / Drawdown chart toggle
+│   │   ├── SuperPanel.js         # Super TWR panel (lazy-loads /api/super)
+│   │   ├── TickerChart.js        # Single asset price viewer with cost basis line (collapsible)
+│   │   ├── TickerTape.js         # Scrolling ticker tape (portfolio + watchlist 1d returns)
+│   │   └── TradeHistory.js       # Trade log + closed positions FIFO summary (lazy-loads)
 │   └── charts/
 │       ├── LineChart.js          # TWR line chart; accepts avgPrice prop for cost basis line
 │       ├── AreaChart.js          # Drawdown area chart
