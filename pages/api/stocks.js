@@ -3,14 +3,12 @@ import {
   buildPositions, buildBenchmark, buildVgsReturnsMap,
   buildPriceSeries, buildTickerReturnPoints, USD_ALLOCATION_TICKERS,
 } from '../../lib/portfolio.js';
-import { put } from '@vercel/blob';
+import { put, list } from '@vercel/blob';
 import {
   calculateTWR, calculateDrawdown, calculateStandardizedReturns,
   calcBeta, correlation, pctChange, mean, std, formatDate,
 } from '../../lib/math.js';
 import { displayTicker } from '../../lib/etfs.js';
-
-let lastTwrWrite = 0;
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -140,16 +138,21 @@ export default async function handler(req, res) {
       .map(([sector, value]) => ({ sector, value, weight: current_value ? value / current_value : 0 }))
       .sort((a, b) => b.value - a.value);
 
-    // TWR cache for portfolio site — in-memory 24h throttle, fire and forget
-    const now = Date.now();
-    if (now - lastTwrWrite > 24 * 60 * 60 * 1000) {
-      lastTwrWrite = now;
-      put(
-        'portfolio-twr-cache.json',
-        JSON.stringify(twrSeries.map(p => ({ date: p.date, twr: p.value }))),
-        { access: 'public', contentType: 'application/json', addRandomSuffix: false }
-      ).catch(e => console.warn('TWR cache write failed:', e.message));
-    }
+    // TWR cache for portfolio site — 24hr throttle via blob uploadedAt, fire and forget
+    list({ prefix: 'portfolio-twr-cache' })
+      .then(({ blobs }) => {
+        const stale = !blobs.length || (Date.now() - new Date(blobs[0].uploadedAt).getTime()) > 24 * 60 * 60 * 1000;
+        if (!stale) return;
+        return put(
+          'portfolio-twr-cache.json',
+          JSON.stringify({
+            twr: twrSeries.map(p => ({ date: p.date, twr: p.value })),
+            vgs: benchmarkTwrSeries.map(p => ({ date: p.date, twr: p.value })),
+          }),
+          { access: 'public', contentType: 'application/json', addRandomSuffix: false }
+        );
+      })
+      .catch(e => console.warn('TWR cache write failed:', e.message));
 
     return res.status(200).json({
       tickers: displayTickers,
