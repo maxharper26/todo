@@ -2,6 +2,7 @@ const FEEDS = [
   'https://finance.yahoo.com/news/rssindex',
   'https://au.finance.yahoo.com/news/rssindex',
   'https://feeds.reuters.com/reuters/businessNews',
+  'https://feeds.content.dowjones.io/public/rss/mw_realtimeheadlines'
 ];
 
 const KEYWORD_TAGS = [
