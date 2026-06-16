@@ -67,7 +67,8 @@ export default async function handler(req, res) {
       : null;
 
     const beta = calcBeta(buildTickerReturnPoints(ticker, priceByTicker, allDates), vgsReturnsMap);
-    const standardizedReturns = calculateStandardizedReturns(prices);
+    const isUsd = !ticker.endsWith('.AX');
+    const standardizedReturns = calculateStandardizedReturns(prices, { useLatestNonZeroOneDay: isUsd });
 
     perTicker[label] = {
       ticker: label,

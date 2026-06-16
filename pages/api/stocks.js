@@ -10,6 +10,35 @@ import {
 } from '../../lib/math.js';
 import { displayTicker } from '../../lib/etfs.js';
 
+function calcRealisedPnl(trades) {
+  const byTicker = {};
+  for (const t of trades) {
+    if (!byTicker[t.Ticker]) byTicker[t.Ticker] = [];
+    byTicker[t.Ticker].push(t);
+  }
+  let total = 0;
+  for (const tickerTrades of Object.values(byTicker)) {
+    const sorted = [...tickerTrades].sort((a, b) => a.Date - b.Date);
+    const buyQueue = [];
+    for (const t of sorted) {
+      if (t.Action === 'buy') {
+        buyQueue.push({ price: t.Price, remaining: t.Units }); // Units positive for buys
+      } else if (t.Action === 'sell') {
+        let toSell = Math.abs(t.Units); // Units is negative for sells after loadTrades normalisation
+        while (toSell > 0.0001 && buyQueue.length > 0) {
+          const lot = buyQueue[0];
+          const matched = Math.min(lot.remaining, toSell);
+          total += matched * (t.Price - lot.price);
+          lot.remaining -= matched;
+          toSell -= matched;
+          if (lot.remaining < 0.0001) buyQueue.shift();
+        }
+      }
+    }
+  }
+  return total;
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -138,6 +167,9 @@ export default async function handler(req, res) {
       .map(([sector, value]) => ({ sector, value, weight: current_value ? value / current_value : 0 }))
       .sort((a, b) => b.value - a.value);
 
+    // ── Realised P&L ─────────────────────────────────────────────
+    const realised_pnl = calcRealisedPnl(trades);
+
     // TWR cache for portfolio site — 24hr throttle via blob uploadedAt, fire and forget
     list({ prefix: 'portfolio-twr-cache' })
       .then(({ blobs }) => {
@@ -158,7 +190,7 @@ export default async function handler(req, res) {
       tickers: displayTickers,
       perTicker: displayPerTicker,
       allocations: weightedAllocations.map(a => ({ ...a, ticker: displayTicker(a.ticker), symbol: a.ticker })),
-      portfolio: { total_cost, current_value, portfolio_return, sharpe: portfolioSharpe, beta: portfolioBeta },
+      portfolio: { total_cost, current_value, portfolio_return, realised_pnl, sharpe: portfolioSharpe, beta: portfolioBeta },
       twrSeries,
       drawdownSeries,
       benchmarkTwrSeries,

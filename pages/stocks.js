@@ -90,10 +90,6 @@ export default function StocksPage() {
   }
 
   useEffect(() => { load(); loadWatchlist(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  // Only load ETFs once on initial data load, not on every refresh
-  useEffect(() => {
-    if (data && !etfLoadedRef.current) loadEtfs();
-  }, [data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadWatchlist(force = false) {
     if (!force) {
@@ -224,7 +220,7 @@ export default function StocksPage() {
     <div className="page">
 
       {/* Ticker tape */}
-      {standardizedReturns && <TickerTape tickers={tickers} standardizedReturns={standardizedReturns} watchlistData={watchlistData} />}
+      {<TickerTape />}
 
       {/* Header */}
       <div className="page-header">
@@ -316,11 +312,15 @@ export default function StocksPage() {
       {/* Summary stats */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
         {[
-          { label: 'P&L',          value: portfolio?.current_value != null && portfolio?.total_cost != null
+          { label: 'Unrealised P&L', value: portfolio?.current_value != null && portfolio?.total_cost != null
             ? `${fmt(portfolio.current_value - portfolio.total_cost)}`
             : '—',
             colour: portfolio?.current_value != null && portfolio?.total_cost != null
               ? portfolio.current_value >= portfolio.total_cost ? '#22c55e' : '#ef4444'
+              : '#64748b' },
+          { label: 'Realised P&L', value: portfolio?.realised_pnl != null ? fmt(portfolio.realised_pnl) : '—',
+            colour: portfolio?.realised_pnl != null
+              ? portfolio.realised_pnl >= 0 ? '#22c55e' : '#ef4444'
               : '#64748b' },
           { label: 'Total Return',  value: portfolio?.portfolio_return != null ? pct(portfolio.portfolio_return) : '—',
             colour: portfolio?.portfolio_return != null
@@ -477,12 +477,7 @@ export default function StocksPage() {
 
 
       {/* ETF Correlations */}
-      {etfLoading && (
-        <div style={{ marginBottom: 24, background: '#111118', border: '1px solid #1e1e2e', borderRadius: 8, padding: '14px 18px', color: '#3a3a52', fontSize: '0.85rem' }}>
-          ETF correlations loading…
-        </div>
-      )}
-      {!etfLoading && lowCorrelationEtfs?.length > 0 && <EtfCorrelations etfs={lowCorrelationEtfs} updatedAt={etfUpdatedAt} />}
+      <EtfCorrelations etfs={lowCorrelationEtfs} updatedAt={etfUpdatedAt} loading={etfLoading} onOpen={() => { if (!etfLoadedRef.current) loadEtfs(); }} />
 
       <PnlContributions tickers={tickers} perTicker={perTicker} allocations={allocations} />
 

@@ -1,15 +1,20 @@
 import { useState } from 'react';
 import { fmt, pct, returnStyle } from '../../lib/stocksFormatters';
 
-export default function EtfCorrelations({ etfs, updatedAt }) {
+export default function EtfCorrelations({ etfs, updatedAt, loading, onOpen }) {
   const [open, setOpen] = useState(false);
   const age = updatedAt
     ? new Date(updatedAt).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
     : null;
+
+  function handleToggle() {
+    if (!open) onOpen?.();
+    setOpen(o => !o);
+  }
   return (
     <div style={{ marginBottom: 24, background: '#111118', border: '1px solid #1e1e2e', borderRadius: 8, color: '#e2e8f0' }}>
       <div
-        onClick={() => setOpen(o => !o)}
+        onClick={() => handleToggle()}
         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', cursor: 'pointer', userSelect: 'none' }}
       >
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
@@ -18,7 +23,10 @@ export default function EtfCorrelations({ etfs, updatedAt }) {
         </div>
         <span style={{ fontSize: '0.65rem', color: '#64748b', display: 'inline-block', transition: 'transform 0.2s', transform: open ? 'rotate(90deg)' : 'none' }}>▶</span>
       </div>
-      {open && (
+      {open && loading && (
+        <div style={{ padding: '12px 18px 18px', color: '#3a3a52', fontSize: '0.85rem' }}>Loading…</div>
+      )}
+      {open && !loading && etfs?.length > 0 && (
         <div style={{ padding: '0 18px 18px' }}>
           <div className="etf-scroll">
             <table className="etf-table">
