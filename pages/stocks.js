@@ -18,6 +18,7 @@ const SECTORS = [
 
 const CACHE_KEY = 'stocks_cache';
 const CACHE_TTL = 30 * 60 * 1000;
+const PORTFOLIO_CACHE_KEY = 'portfolio_cache';
 const WATCHLIST_CACHE_KEY = 'watchlist_cache';
 const WATCHLIST_CACHE_TTL = 30 * 60 * 1000;
 
@@ -45,26 +46,31 @@ export default function StocksPage() {
     if (!force) {
       try {
         const cached = JSON.parse(localStorage.getItem(CACHE_KEY));
-        if (cached && Date.now() - cached.ts < CACHE_TTL) {
-          setData(cached.data);
-          setLoading(false);
-          return;
-        }
+        if (cached && Date.now() - cached.ts < CACHE_TTL) { setData(cached.data); setLoading(false); return; }
       } catch {}
     }
 
-    // If we already have data, do a soft refresh (no full-page loading state)
-    if (force && data) {
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-    }
+    if (force && data) setRefreshing(true);
+    else setLoading(true);
     setError(null);
 
     try {
-      const res = await fetch('/api/stocks');
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
+      let json;
+      const cachedPortfolio = (() => { try { return JSON.parse(localStorage.getItem(PORTFOLIO_CACHE_KEY)); } catch { return null; } })();
+      if (!force && cachedPortfolio) {
+        const res = await fetch('/api/stocks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ trades: cachedPortfolio }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        json = await res.json();
+      } else {
+        const res = await fetch('/api/stocks');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        json = await res.json();
+        if (json.rawTrades) { try { localStorage.setItem(PORTFOLIO_CACHE_KEY, JSON.stringify(json.rawTrades)); } catch {} }
+      }
       setData(json);
       try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data: json })); } catch {}
     } catch (err) {
@@ -166,7 +172,8 @@ export default function StocksPage() {
       }
       setTradeModal(false);
       setTradeForm(TRADE_FORM_DEFAULT);
-      await load(true); // await so refreshing state is accurate
+      try { localStorage.removeItem(CACHE_KEY); localStorage.removeItem(PORTFOLIO_CACHE_KEY); } catch {}
+      await load(true);
     } catch (err) {
       setTradeError(err.message);
     } finally {
@@ -483,7 +490,7 @@ export default function StocksPage() {
 
       <SuperPanel />
 
-      <TradeHistory onDelete={() => load(true)} />
+      <TradeHistory onDelete={() => { try { localStorage.removeItem(CACHE_KEY); localStorage.removeItem(PORTFOLIO_CACHE_KEY); } catch {} load(true); }} />
 
       <CotPanel />
 

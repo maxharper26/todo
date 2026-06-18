@@ -120,6 +120,8 @@ Kanban board (High/Medium/Low urgency columns). Tasks stored in `tasks.json` blo
 
 **localStorage is the default cache** — always check localStorage before hitting an API route. TTLs: stocks 30 min, tasks 5 min, NRL 24h, surf 24h, news 3h.
 
+- **Stocks page** also caches raw `portfolio.json` trades indefinitely under `portfolio_cache` key (no TTL). On a stocks cache miss, trades are POSTed to `/api/stocks` so the handler skips the blob read. `portfolio_cache` is busted on add/delete trade and manual refresh.
+
 **Blob is for two things only:**
 1. **Persistent user data** that must survive across devices: `portfolio.json`, `tasks.json`, `nrl_rounds.json`
 2. **Rate-limited / expensive external API fallbacks** where stale > failure: `surf-cache.json` (Stormglass 10 calls/day), `etf-correlations.json` (7-day TTL, heavy multi-ticker Yahoo computation), `cot.json` (Lambda output)

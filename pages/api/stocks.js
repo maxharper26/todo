@@ -41,13 +41,20 @@ function calcRealisedPnl(trades) {
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   try {
     // ── Load trades ──────────────────────────────────────────────
-    const trades = await loadTrades();
+    let rawTrades = req.method === 'POST' ? req.body?.trades ?? null : null;
+    if (!rawTrades) {
+      const { blobs } = await list();
+      const blob = blobs.find(b => b.pathname === 'portfolio.json');
+      if (!blob) throw new Error('portfolio.json not found in blob store');
+      rawTrades = await (await fetch(blob.url)).json();
+    }
+    const trades = await loadTrades(rawTrades);
     const openTickers = getOpenTickers(trades);
     if (!openTickers.length) {
       return res.status(200).json({ tickers: [], perTicker: {}, portfolio: {}, allocations: [], sectorAllocations: [] });
@@ -200,6 +207,7 @@ export default async function handler(req, res) {
       priceSeries,
       sectorAllocations,
       loaded_at: new Date().toISOString(),
+      rawTrades,
     });
 
   } catch (err) {
