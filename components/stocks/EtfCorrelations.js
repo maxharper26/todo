@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { fmt, pct, returnStyle } from '../../lib/stocksFormatters';
 
-export default function EtfCorrelations({ etfs, updatedAt, loading, onOpen }) {
+export default function EtfCorrelations({ etfs, updatedAt, loading, everLoaded, onOpen }) {
   const [open, setOpen] = useState(false);
   const age = updatedAt
     ? new Date(updatedAt).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -23,8 +23,11 @@ export default function EtfCorrelations({ etfs, updatedAt, loading, onOpen }) {
         </div>
         <span style={{ fontSize: '0.65rem', color: '#64748b', display: 'inline-block', transition: 'transform 0.2s', transform: open ? 'rotate(90deg)' : 'none' }}>▶</span>
       </div>
-      {open && loading && (
+      {open && (loading || !everLoaded) && (
         <div style={{ padding: '12px 18px 18px', color: '#3a3a52', fontSize: '0.85rem' }}>Loading…</div>
+      )}
+      {open && !loading && !etfs?.length && (
+        <div style={{ padding: '12px 18px 18px', color: '#3a3a52', fontSize: '0.85rem' }}>No data available.</div>
       )}
       {open && !loading && etfs?.length > 0 && (
         <div style={{ padding: '0 18px 18px' }}>
@@ -33,7 +36,8 @@ export default function EtfCorrelations({ etfs, updatedAt, loading, onOpen }) {
               <thead>
                 <tr>
                   <th>Ticker</th><th>ETF</th>
-                  <th>Correlation</th><th>1m Return</th><th>Days</th>
+                  <th>Correlation</th><th>1m Return</th>
+                  {/* <th>Days</th> */}
                 </tr>
               </thead>
               <tbody>
@@ -43,7 +47,7 @@ export default function EtfCorrelations({ etfs, updatedAt, loading, onOpen }) {
                     <td>{item.name}</td>
                     <td className="num" style={returnStyle(item.correlation != null ? -item.correlation : null)}>{fmt(item.correlation)}</td>
                     <td className="num" style={returnStyle(item.oneMonthReturn)}>{pct(item.oneMonthReturn)}</td>
-                    <td className="num muted">{item.observations}</td>
+                    {/* <td className="num muted">{item.observations}</td> */}
                   </tr>
                 ))}
               </tbody>

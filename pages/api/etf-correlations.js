@@ -1,6 +1,17 @@
 import { loadTrades, getOpenTickers, fetchPriceHistory, alignPrices, buildPositions, USD_ALLOCATION_TICKERS } from '../../lib/portfolio.js';
 import { calculateTWR, pctChange, mean, std } from '../../lib/math.js';
 import { getLowCorrelationEtfs, etfListHash } from '../../lib/etfs.js';
+import { head } from '@vercel/blob';
+
+async function getRawTrades() {
+  try {
+    const blob = await head('portfolio.json');
+    const res = await fetch(blob.url);
+    return await res.json();
+  } catch {
+    return [];
+  }
+}
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -9,7 +20,8 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   try {
-    const trades = await loadTrades();
+    const rawTrades = await getRawTrades();
+    const trades = await loadTrades(rawTrades);
     const openTickers = getOpenTickers(trades);
     if (!openTickers.length) {
       return res.status(200).json({ lowCorrelationEtfs: [], etfUpdatedAt: null });

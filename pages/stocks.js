@@ -484,7 +484,7 @@ export default function StocksPage() {
 
 
       {/* ETF Correlations */}
-      <EtfCorrelations etfs={lowCorrelationEtfs} updatedAt={etfUpdatedAt} loading={etfLoading} onOpen={() => { if (!etfLoadedRef.current) loadEtfs(); }} />
+      <EtfCorrelations etfs={lowCorrelationEtfs} updatedAt={etfUpdatedAt} loading={etfLoading} everLoaded={etfLoadedRef.current} onOpen={() => { if (!etfLoadedRef.current) loadEtfs(); }} />
 
       <PnlContributions tickers={tickers} perTicker={perTicker} allocations={allocations} />
 
