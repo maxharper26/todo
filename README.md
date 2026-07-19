@@ -41,6 +41,7 @@ unified-app/
 │   ├── OddsTape.js               # Scrolling odds ticker for NRL page (6h localStorage cache)
 │   ├── stocks/                   # Stocks page panel components
 │   │   ├── CotPanel.js           # COT signals table (lazy-loads /api/cot)
+│   │   ├── BondSpreadPanel.js    # ORCL bond credit-spread chart (lazy-loads /api/bond-spread)
 │   │   ├── EtfCorrelations.js    # Low-correlation ETF list (collapsible)
 │   │   ├── PnlContributions.js   # Per-ticker P&L contribution bar chart (collapsible)
 │   │   ├── PortfolioChartToggle.js # TWR / Drawdown chart toggle
@@ -84,6 +85,7 @@ Fetches `/api/stocks` on load. Displays:
 - **Correlation matrix** — Pairwise return correlations across open positions.
 - **Allocation pie** — Toggle between Holdings (by ticker) and Sectors (by sector tag). Holdings/Sectors button in panel header.
 - **ETF Correlations** — Collapsible. 57 ETFs across sectors/geographies/alternatives. Blob-cached 7 days. Shows "as of [date]" in header. Cache key = ETF list hash + open tickers (no date, so genuinely holds 7 days).
+- **Bond Spread** — Collapsible, lazy-loads `/api/bond-spread`. Chart of ORCL bond credit spread (yield minus 10Y US Treasury, bps) over time, plus latest price/yield/spread snapshot. Data written by the `lambdas/bonds` email lambda into `bond-spread.json` blob on each run.
 - **Single Asset Viewer** — Collapsible. Dropdown selects a position, shows raw price history. Amber dashed cost basis line at avgPrice.
 - **Trade History** — Collapsible, lazy-loads from `/api/portfolio`. Sorted newest first, buy/sell badge, delete button.
 - **Add trade modal** — Buy/sell toggle, ticker/date/price/units/sector fields. Sector auto-populates from existing holding on ticker entry. Reloads data after submit.
@@ -139,6 +141,7 @@ Kanban board (High/Medium/Low urgency columns). Tasks stored in `tasks.json` blo
 | `etf-correlations.json` | `lib/etfs.js` | `lib/etfs.js` | 7-day TTL, cache key = ETF list hash + open tickers |
 | `nrl_rounds.json` | teamlists Lambda | `/api/nrl` GET | All rounds `{ rounds: { round-N: {...} }, updated_at }` |
 | `surf-cache.json` | `/api/surf` | `/api/surf` | Stale fallback on Stormglass 429; keyed by beach ID |
+| `bond-spread.json` | `lambdas/bonds` Lambda | `/api/bond-spread` GET | `{ bonds: { label: { cusip, series: [{date, price, yield, spread_bps}] } }, updated_at }` |
 
 ### Trade schema (`portfolio.json`)
 

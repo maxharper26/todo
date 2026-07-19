@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Heatmap, PieChart } from '../components/charts';
 import { fmt, pct, conditionalCellStyle, getColumnStats } from '../lib/stocksFormatters';
 import CotPanel from '../components/stocks/CotPanel';
+import BondSpreadPanel from '../components/stocks/BondSpreadPanel';
 import EtfCorrelations from '../components/stocks/EtfCorrelations';
 import PnlContributions from '../components/stocks/PnlContributions';
 import PortfolioChartToggle from '../components/stocks/PortfolioChartToggle';
@@ -493,6 +494,8 @@ export default function StocksPage() {
       <TradeHistory onDelete={() => { try { localStorage.removeItem(CACHE_KEY); localStorage.removeItem(PORTFOLIO_CACHE_KEY); } catch {} load(true); }} />
 
       <CotPanel />
+
+      <BondSpreadPanel />
 
       <div className="last-updated">Last updated: {new Date(loaded_at).toLocaleString()}</div>
     </div>
