@@ -34,7 +34,6 @@ const NAV_LINKS = [
   { href: '/stocks', label: 'Finance' },
   { href: '/nrl',    label: 'NRL' },
   { href: '/surf',   label: 'Surf' },
-  { href: '/news',   label: 'News' },
 ];
 
 function NavBar() {
