@@ -5,7 +5,6 @@ const PAGES = [
   { href: '/stocks', label: 'Finance',  icon: '📈', desc: 'Portfolio, returns' },
   { href: '/nrl',    label: 'NRL',      icon: '🏉', desc: 'Team lists and ins & outs' },
   { href: '/surf',   label: 'Surf',     icon: '🌊', desc: 'Swell, wind and tides' },
-
 ];
 
 export default function Home() {
