@@ -52,7 +52,7 @@ export default async function handler(req, res) {
       const { blobs } = await list();
       const blob = blobs.find(b => b.pathname === 'portfolio.json');
       if (!blob) throw new Error('portfolio.json not found in blob store');
-      rawTrades = await (await fetch(blob.url)).json();
+      rawTrades = await (await fetch(blob.url, { cache: 'no-store' })).json();
     }
     const trades = await loadTrades(rawTrades);
     const openTickers = getOpenTickers(trades);

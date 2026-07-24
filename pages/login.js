@@ -19,7 +19,7 @@ export default function LoginPage() {
       });
       if (res.ok) {
         const from = router.query.from || '/stocks';
-        router.push(from);
+        window.location.href = from;
       } else {
         setError('Incorrect password.');
         setPassword('');

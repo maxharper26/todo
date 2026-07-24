@@ -5,7 +5,7 @@ const BLOB_KEY = 'portfolio.json';
 async function getTrades() {
   try {
     const blob = await head(BLOB_KEY);
-    const res = await fetch(blob.url);
+    const res = await fetch(blob.url, { cache: 'no-store' });
     return await res.json();
   } catch (e) {
     return [];
